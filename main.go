@@ -20,7 +20,6 @@ func main() {
 
 	database.InitDB()
 	utils.InitJWTSecret()
-	utils.SeedSuperAdmin()
 
 	e := echo.New()
 

@@ -30,11 +30,11 @@ func InitDB() {
 	err = db.AutoMigrate(
 		&models.Gym{},
 		&models.User{},
-		&models.MemberProfile{},
 		&models.MembershipPlan{},
 		&models.Subscription{},
 		&models.Payment{},
 		&models.Attendance{},
+		&models.WorkoutPlan{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to auto-migrate database: %v", err)
