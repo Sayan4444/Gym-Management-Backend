@@ -11,7 +11,7 @@ func SetupRoutes(e *echo.Echo) {
 	api := e.Group("/api")
 
 	// Public Routes
-	api.POST("/login", handlers.Login)
+	api.POST("/auth/google", handlers.GoogleLogin)
 
 	// Protected Routes
 	protected := api.Group("")
