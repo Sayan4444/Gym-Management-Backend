@@ -83,10 +83,10 @@ func AssignSubscription(c echo.Context) error {
 	database.DB.Create(&sub)
 
 	payment := models.Payment{
-		SubscriptionID: sub.ID,
-		Amount:         plan.Price,
-		PaymentDate:    startDate,
-		Status:         "Paid",
+		UserID:      req.UserID,
+		Amount:      plan.Price,
+		PaymentDate: startDate,
+		Status:      "Paid",
 	}
 	database.DB.Create(&payment)
 

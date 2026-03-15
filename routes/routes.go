@@ -18,8 +18,8 @@ func SetupRoutes(e *echo.Echo) {
 	protected.Use(middleware.JWTMiddleware())
 
 	// Member API
-	protected.POST("/members", handlers.CreateMember, middleware.RoleScope("SuperAdmin", "GymAdmin"))
-	protected.GET("/members", handlers.GetMembers, middleware.RoleScope("SuperAdmin", "GymAdmin", "Trainer"))
+	protected.PUT("/members/:id", handlers.EditMember, middleware.RoleScope("SuperAdmin", "GymAdmin"))
+	protected.DELETE("/members/:id", handlers.DeleteMember, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 
 	// Attendance API
 	protected.POST("/attendance", handlers.LogAttendance, middleware.RoleScope("SuperAdmin", "GymAdmin"))
