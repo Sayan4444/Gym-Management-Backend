@@ -35,6 +35,7 @@ func InitDB() {
 		&models.Payment{},
 		&models.Attendance{},
 		&models.WorkoutPlan{},
+		&models.Addon{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to auto-migrate database: %v", err)

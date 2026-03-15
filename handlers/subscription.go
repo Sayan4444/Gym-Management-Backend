@@ -92,3 +92,33 @@ func AssignSubscription(c echo.Context) error {
 
 	return c.JSON(http.StatusCreated, sub)
 }
+
+func GetSubscriptions(c echo.Context) error {
+	var subs []models.Subscription
+	
+	gymIDRaw := c.Get("gym_id")
+	userIDRaw := c.Get("user_id")
+
+	query := database.DB.Model(&models.Subscription{})
+
+	// Filter by gym if it's a GymAdmin
+	if gymIDRaw != nil {
+		query = query.Joins("JOIN users ON users.id = subscriptions.user_id").
+			Where("users.gym_id = ?", uint(gymIDRaw.(float64)))
+	}
+
+	// Filter by specific user if user_id is provided in query params (for admin viewing a member)
+	userIDParam := c.QueryParam("user_id")
+	if userIDParam != "" {
+		query = query.Where("subscriptions.user_id = ?", userIDParam)
+	} else if userIDRaw != nil && c.Get("role").(string) == "Member" {
+		// If logged in as Member, they can only see their own
+		query = query.Where("subscriptions.user_id = ?", uint(userIDRaw.(float64)))
+	}
+
+	if err := query.Find(&subs).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch subscriptions"})
+	}
+
+	return c.JSON(http.StatusOK, subs)
+}

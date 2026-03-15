@@ -73,3 +73,25 @@ func GetDashboardStats(c echo.Context) error {
 		"total_revenue":      res.Total,
 	})
 }
+
+func GetGyms(c echo.Context) error {
+	var gyms []models.Gym
+	if err := database.DB.Find(&gyms).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch gyms"})
+	}
+	return c.JSON(http.StatusOK, gyms)
+}
+
+func GetGym(c echo.Context) error {
+	gymIdentifier := c.Param("identifier")
+	var gym models.Gym
+
+	// Try fetching by slug first, then by ID
+	if err := database.DB.Where("slug = ?", gymIdentifier).First(&gym).Error; err != nil {
+		if err := database.DB.First(&gym, gymIdentifier).Error; err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, gym)
+}

@@ -18,12 +18,44 @@ type CreateMemberRequest struct {
 }
 
 type EditMemberRequest struct {
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
-	DOB      string `json:"dob"`
-	Gender   string `json:"gender"`
-	PhotoURL string `json:"photo_url"`
+	Name                  string   `json:"name"`
+	Email                 string   `json:"email"`
+	Phone                 string   `json:"phone"`
+	DOB                   string   `json:"dob"`
+	Gender                string   `json:"gender"`
+	PhotoURL              string   `json:"photo_url"`
+	Address               string   `json:"address"`
+	EmergencyContactName  string   `json:"emergency_contact_name"`
+	EmergencyContactPhone string   `json:"emergency_contact_phone"`
+	BloodGroup            string   `json:"blood_group"`
+	Height                *float64 `json:"height"`
+	Weight                *float64 `json:"weight"`
+	MedicalConditions     string   `json:"medical_conditions"`
+}
+
+func GetMembers(c echo.Context) error {
+	var members []models.User
+	query := database.DB.Where("role = ?", "Member")
+
+	gymIDRaw := c.Get("gym_id")
+	if gymIDRaw != nil {
+		query = query.Where("gym_id = ?", uint(gymIDRaw.(float64)))
+	} else if c.QueryParam("gym_id") != "" {
+		query = query.Where("gym_id = ?", c.QueryParam("gym_id"))
+	}
+
+	if c.QueryParam("is_premium") == "true" {
+		query = query.Joins("JOIN subscriptions ON subscriptions.user_id = users.id").
+			Joins("JOIN membership_plans ON membership_plans.id = subscriptions.plan_id").
+			Where("subscriptions.status = ?", "Active").
+			Where("membership_plans.name ILIKE ?", "%premium%")
+	}
+
+	if err := query.Find(&members).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch members"})
+	}
+
+	return c.JSON(http.StatusOK, members)
 }
 
 func EditMember(c echo.Context) error {
@@ -78,6 +110,27 @@ func EditMember(c echo.Context) error {
 	}
 	if req.PhotoURL != "" {
 		user.PhotoURL = req.PhotoURL
+	}
+	if req.Address != "" {
+		user.Address = req.Address
+	}
+	if req.EmergencyContactName != "" {
+		user.EmergencyContactName = req.EmergencyContactName
+	}
+	if req.EmergencyContactPhone != "" {
+		user.EmergencyContactPhone = req.EmergencyContactPhone
+	}
+	if req.BloodGroup != "" {
+		user.BloodGroup = req.BloodGroup
+	}
+	if req.Height != nil {
+		user.Height = req.Height
+	}
+	if req.Weight != nil {
+		user.Weight = req.Weight
+	}
+	if req.MedicalConditions != "" {
+		user.MedicalConditions = req.MedicalConditions
 	}
 
 	if err := database.DB.Save(&user).Error; err != nil {

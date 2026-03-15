@@ -12,12 +12,15 @@ func SetupRoutes(e *echo.Echo) {
 
 	// Public Routes
 	api.POST("/auth/google", handlers.GoogleLogin)
+	api.GET("/gyms", handlers.GetGyms)
+	api.GET("/gyms/:identifier", handlers.GetGym)
 
 	// Protected Routes
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
 
 	// Member API
+	protected.GET("/members", handlers.GetMembers, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.PUT("/members/:id", handlers.EditMember, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.DELETE("/members/:id", handlers.DeleteMember, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 
@@ -28,6 +31,12 @@ func SetupRoutes(e *echo.Echo) {
 	protected.POST("/plans", handlers.CreatePlan, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.GET("/plans", handlers.GetPlans, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.POST("/subscriptions", handlers.AssignSubscription, middleware.RoleScope("SuperAdmin", "GymAdmin"))
+	protected.GET("/subscriptions", handlers.GetSubscriptions)
+
+	// Addons API
+	protected.POST("/addons", handlers.CreateAddon, middleware.RoleScope("SuperAdmin", "GymAdmin"))
+	protected.GET("/addons", handlers.GetAddons)
+	protected.POST("/addons/buy", handlers.BuyAddon)
 
 	// Dashboard Config
 	protected.GET("/dashboard/stats", handlers.GetDashboardStats, middleware.RoleScope("GymAdmin"))

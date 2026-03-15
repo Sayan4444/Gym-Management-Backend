@@ -7,23 +7,32 @@ import (
 
 type User struct {
 	gorm.Model
-	Name        string `json:"name"`
-	Email       string `json:"email" gorm:"unique"`
-	Phone       string `json:"phone" gorm:"unique"`
-	DOB         string `json:"dob"`
-	Gender      string `json:"gender"`
-	PhotoURL    string `json:"photo_url"`
-	BiometricID string `json:"biometric_id"` // Simulated
-	Role        string `json:"role"`         // SuperAdmin, GymAdmin, Trainer, Member
-	GymID       *uint  `json:"gym_id" gorm:"index"`
-	TrainerID   *uint  `json:"trainer_id" gorm:"index"`
+	Name                  string   `json:"name"`
+	Email                 string   `json:"email" gorm:"unique"`
+	Phone                 string   `json:"phone" gorm:"unique"`
+	DOB                   string   `json:"dob"`
+	Gender                string   `json:"gender"`
+	PhotoURL              string   `json:"photo_url"`
+	BiometricID           string   `json:"biometric_id"` // Simulated
+	Role                  string   `json:"role"`         // SuperAdmin, GymAdmin, Trainer, Member
+	GymID                 *uint    `json:"gym_id" gorm:"index"`
+	TrainerID             *uint    `json:"trainer_id" gorm:"index"`
+	Address               string   `json:"address"`
+	EmergencyContactName  string   `json:"emergency_contact_name"`
+	EmergencyContactPhone string   `json:"emergency_contact_phone"`
+	BloodGroup            string   `json:"blood_group"`
+	Height                *float64 `json:"height"`
+	Weight                *float64 `json:"weight"`
+	MedicalConditions     string   `json:"medical_conditions"`
 }
 
 type Gym struct {
 	gorm.Model
-	Name    string `json:"name"`
-	Address string `json:"address"`
-	Users   []User `gorm:"foreignKey:GymID"`
+	Name     string `json:"name"`
+	Slug     string `json:"slug" gorm:"uniqueIndex"`
+	Address  string `json:"address"`
+	Whatsapp string `json:"whatsapp"`
+	Users    []User `gorm:"foreignKey:GymID"`
 }
 
 type MembershipPlan struct {
@@ -50,6 +59,7 @@ type Payment struct {
 	Amount      float64   `json:"amount"`
 	PaymentDate time.Time `json:"payment_date"`
 	Status      string    `json:"status"` // Paid, Pending, Failed
+	PaymentFor  string    `json:"payment_for"` // Membership Plan, Add-On
 }
 
 type Attendance struct {
@@ -68,4 +78,12 @@ type WorkoutPlan struct {
 	MemberID    uint   `json:"member_id" gorm:"index"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
+}
+
+type Addon struct {
+	gorm.Model
+	GymID    uint    `json:"gym_id" gorm:"index"`
+	Name     string  `json:"name"`
+	Price    float64 `json:"price"`
+	IsActive bool    `json:"is_active" gorm:"default:true"`
 }
