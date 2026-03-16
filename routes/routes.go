@@ -14,13 +14,14 @@ func SetupRoutes(e *echo.Echo) {
 	api.POST("/auth/google", handlers.GoogleLogin)
 	api.GET("/gyms", handlers.GetGyms)
 	api.GET("/gyms/:identifier", handlers.GetGym)
+	api.POST("/demo-request", handlers.SubmitDemoRequest)
 
 	// Protected Routes
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
 
 	// Member API
-	protected.GET("/members", handlers.GetMembers, middleware.RoleScope("SuperAdmin", "GymAdmin"))
+	protected.GET("/users", handlers.GetUsers, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.PUT("/members/:id", handlers.EditMember, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.DELETE("/members/:id", handlers.DeleteMember, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 

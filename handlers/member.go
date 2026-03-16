@@ -33,9 +33,17 @@ type EditMemberRequest struct {
 	MedicalConditions     string   `json:"medical_conditions"`
 }
 
-func GetMembers(c echo.Context) error {
-	var members []models.User
-	query := database.DB.Where("role = ?", "Member")
+func GetUsers(c echo.Context) error {
+	var users []models.User
+	query := database.DB.Model(&models.User{})
+
+	roleFilter := c.QueryParam("role")
+	if roleFilter != "" {
+		query = query.Where("role = ?", roleFilter)
+	} else if c.Get("role") != "SuperAdmin" {
+		// Non-SuperAdmins can typically only see members or trainers of their gym
+		query = query.Where("role = ?", "Member")
+	}
 
 	gymIDRaw := c.Get("gym_id")
 	if gymIDRaw != nil {
@@ -51,11 +59,11 @@ func GetMembers(c echo.Context) error {
 			Where("membership_plans.name ILIKE ?", "%premium%")
 	}
 
-	if err := query.Find(&members).Error; err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch members"})
+	if err := query.Find(&users).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch users"})
 	}
 
-	return c.JSON(http.StatusOK, members)
+	return c.JSON(http.StatusOK, users)
 }
 
 func EditMember(c echo.Context) error {
