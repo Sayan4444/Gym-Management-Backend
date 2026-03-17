@@ -15,12 +15,16 @@ func SendEmail(to, subject, body string) error {
 	pass := os.Getenv("SMTP_PASS")
 	from := os.Getenv("SMTP_FROM")
 
-	if host == "" || port == "" || user == "" || pass == "" || from == "" {
-		return fmt.Errorf("SMTP not configured: missing one or more SMTP_* env vars")
+	if host == "" || port == "" || from == "" {
+		return fmt.Errorf("SMTP not configured: missing host, port, or from env vars")
 	}
 
 	addr := fmt.Sprintf("%s:%s", host, port)
-	auth := smtp.PlainAuth("", user, pass, host)
+	
+	var auth smtp.Auth
+	if user != "" {
+		auth = smtp.PlainAuth("", user, pass, host)
+	}
 
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=\"utf-8\"\r\n\r\n%s",
 		from, to, subject, body)
