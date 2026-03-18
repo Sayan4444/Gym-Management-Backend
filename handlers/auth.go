@@ -78,13 +78,7 @@ func GoogleLogin(c echo.Context) error {
 	c.SetCookie(cookie)
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"user": map[string]interface{}{
-			"id":     user.ID,
-			"name":   user.Name,
-			"email":  user.Email,
-			"role":   user.Role,
-			"gym_id": user.GymID,
-		},
+		"user": user,
 	})
 }
 
@@ -117,11 +111,5 @@ func GetMe(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"id":     user.ID,
-		"name":   user.Name,
-		"email":  user.Email,
-		"role":   user.Role,
-		"gym_id": user.GymID,
-	})
+	return c.JSON(http.StatusOK, user)
 }

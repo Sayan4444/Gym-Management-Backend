@@ -6,7 +6,10 @@ import (
 )
 
 type User struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	Name                  string   `json:"name"`
 	Email                 string   `json:"email" gorm:"unique"`
 	Phone                 string   `json:"phone" gorm:"unique"`
@@ -27,7 +30,10 @@ type User struct {
 }
 
 type Gym struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	Name     string `json:"name"`
 	Slug     string `json:"slug" gorm:"uniqueIndex"`
 	Address  string `json:"address"`
@@ -36,7 +42,10 @@ type Gym struct {
 }
 
 type MembershipPlan struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	GymID          uint    `json:"gym_id" gorm:"index"`
 	Name           string  `json:"name"`
 	Price          float64 `json:"price"`
@@ -45,7 +54,10 @@ type MembershipPlan struct {
 }
 
 type Subscription struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	UserID    uint      `json:"user_id" gorm:"index"`
 	PlanID    uint      `json:"plan_id" gorm:"index"`
 	StartDate time.Time `json:"start_date"`
@@ -54,7 +66,10 @@ type Subscription struct {
 }
 
 type Payment struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	UserID      uint      `json:"user_id" gorm:"index"`
 	Amount      float64   `json:"amount"`
 	PaymentDate time.Time `json:"payment_date"`
@@ -63,7 +78,10 @@ type Payment struct {
 }
 
 type Attendance struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	UserID  uint       `json:"user_id" gorm:"index"`
 	Date    time.Time  `json:"date" gorm:"type:date"`
 	TimeIn  time.Time  `json:"time_in"`
@@ -72,7 +90,10 @@ type Attendance struct {
 }
 
 type WorkoutPlan struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	GymID       uint   `json:"gym_id" gorm:"index"`
 	TrainerID   uint   `json:"trainer_id" gorm:"index"`
 	MemberID    uint   `json:"member_id" gorm:"index"`
@@ -81,7 +102,10 @@ type WorkoutPlan struct {
 }
 
 type Addon struct {
-	gorm.Model
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	GymID    uint    `json:"gym_id" gorm:"index"`
 	Name     string  `json:"name"`
 	Price    float64 `json:"price"`
