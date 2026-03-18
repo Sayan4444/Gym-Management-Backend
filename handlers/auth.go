@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"context"
+	"encoding/json"
 	"net/http"
 
 	"gym-saas/database"
@@ -9,7 +9,6 @@ import (
 	"gym-saas/utils"
 
 	"github.com/labstack/echo/v4"
-	"google.golang.org/api/idtoken"
 )
 
 type GoogleLoginRequest struct {
@@ -22,15 +21,28 @@ func GoogleLogin(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
-	payload, err := idtoken.Validate(context.Background(), req.Credential, "")
-	if err != nil {
+	// For implicit flow, the frontend sends the access_token in the credential field.
+	// We need to fetch the user information from Google's UserInfo API.
+	userInfoURL := "https://www.googleapis.com/oauth2/v3/userinfo?access_token=" + req.Credential
+	resp, err := http.Get(userInfoURL)
+	if err != nil || resp.StatusCode != http.StatusOK {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid Google token"})
 	}
+	defer resp.Body.Close()
 
-	email, ok := payload.Claims["email"].(string)
-	if !ok {
+	var userInfo struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to decode user info"})
+	}
+
+	email := userInfo.Email
+	if email == "" {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Email not found in token"})
 	}
+	name := userInfo.Name
 
 	var user models.User
 	if err := database.DB.Where("email = ?", email).First(&user).Error; err != nil {
@@ -39,7 +51,7 @@ func GoogleLogin(c echo.Context) error {
 			Email: email,
 			Role:  "Member",
 		}
-		if name, ok := payload.Claims["name"].(string); ok {
+		if name != "" {
 			user.Name = name
 		}
 		if err := database.DB.Create(&user).Error; err != nil {
