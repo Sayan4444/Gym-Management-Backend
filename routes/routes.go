@@ -22,6 +22,7 @@ func SetupRoutes(e *echo.Echo) {
 
 	// Member API
 	protected.GET("/users", handlers.GetUsers, middleware.RoleScope("SuperAdmin", "GymAdmin"))
+	protected.PUT("/profile", handlers.UpdateProfile) // allow users to update their own profile
 	protected.PUT("/members/:id", handlers.EditMember, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.DELETE("/members/:id", handlers.DeleteMember, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 
