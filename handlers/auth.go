@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"gym-saas/database"
 	"gym-saas/models"
@@ -64,8 +65,19 @@ func GoogleLogin(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Error generating token"})
 	}
 
+	// Set JWT as an HTTP-only secure cookie
+	cookie := &http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false, // set to true in production with HTTPS
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(24 * time.Hour / time.Second), // 24 hours
+	}
+	c.SetCookie(cookie)
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"token": token,
 		"user": map[string]interface{}{
 			"id":     user.ID,
 			"name":   user.Name,
@@ -73,5 +85,43 @@ func GoogleLogin(c echo.Context) error {
 			"role":   user.Role,
 			"gym_id": user.GymID,
 		},
+	})
+}
+
+// Logout clears the auth cookie
+func Logout(c echo.Context) error {
+	cookie := &http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1, // delete the cookie
+	}
+	c.SetCookie(cookie)
+	return c.JSON(http.StatusOK, map[string]string{"message": "Logged out successfully"})
+}
+
+// GetMe returns the currently authenticated user's data
+func GetMe(c echo.Context) error {
+	userIDRaw := c.Get("user_id")
+	if userIDRaw == nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+
+	userID := uint(userIDRaw.(float64))
+
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"id":     user.ID,
+		"name":   user.Name,
+		"email":  user.Email,
+		"role":   user.Role,
+		"gym_id": user.GymID,
 	})
 }

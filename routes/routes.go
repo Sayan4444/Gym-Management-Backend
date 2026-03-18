@@ -12,6 +12,7 @@ func SetupRoutes(e *echo.Echo) {
 
 	// Public Routes
 	api.POST("/auth/google", handlers.GoogleLogin)
+	api.POST("/auth/logout", handlers.Logout)
 	api.GET("/gyms", handlers.GetGyms)
 	api.GET("/gyms/:identifier", handlers.GetGym)
 	api.POST("/demo-request", handlers.SubmitDemoRequest)
@@ -19,6 +20,9 @@ func SetupRoutes(e *echo.Echo) {
 	// Protected Routes
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
+
+	// Auth (protected)
+	protected.GET("/auth/me", handlers.GetMe)
 
 	// Member API
 	protected.GET("/users", handlers.GetUsers, middleware.RoleScope("SuperAdmin", "GymAdmin"))
