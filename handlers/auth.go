@@ -13,7 +13,7 @@ import (
 )
 
 type GoogleLoginRequest struct {
-	Credential string `json:"credential"`
+	AccessToken string `json:"access_token"`
 }
 
 func GoogleLogin(c echo.Context) error {
@@ -24,7 +24,7 @@ func GoogleLogin(c echo.Context) error {
 
 	// For implicit flow, the frontend sends the access_token in the credential field.
 	// We need to fetch the user information from Google's UserInfo API.
-	userInfoURL := "https://www.googleapis.com/oauth2/v3/userinfo?access_token=" + req.Credential
+	userInfoURL := "https://www.googleapis.com/oauth2/v3/userinfo?access_token=" + req.AccessToken
 	resp, err := http.Get(userInfoURL)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid Google token"})
@@ -100,6 +100,7 @@ func Logout(c echo.Context) error {
 // GetMe returns the currently authenticated user's data
 func GetMe(c echo.Context) error {
 	userIDRaw := c.Get("user_id")
+	c.Logger().Info("User ID: ", userIDRaw)
 	if userIDRaw == nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}

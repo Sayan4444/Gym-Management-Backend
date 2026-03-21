@@ -95,3 +95,14 @@ func GetGym(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, gym)
 }
+
+func AddGym(c echo.Context) error {
+	var gym models.Gym
+	if err := c.Bind(&gym); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})	
+	}
+	if err := database.DB.Create(&gym).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create gym"})
+	}
+	return c.JSON(http.StatusOK, gym)
+}

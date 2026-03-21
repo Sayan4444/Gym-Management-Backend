@@ -23,10 +23,15 @@ func main() {
 
 	e := echo.New()
 
+	frontend_url := os.Getenv("FRONTEND_URL")
+	if frontend_url == "" {
+		frontend_url = "http://localhost:3000"
+	}
+
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     []string{frontend_url},
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 		AllowCredentials: true,
 	}))

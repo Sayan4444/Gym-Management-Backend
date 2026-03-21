@@ -8,6 +8,7 @@ import (
 )
 
 func SetupRoutes(e *echo.Echo) {
+	AuthRoutes(e)
 	api := e.Group("/api")
 
 	// Public Routes
@@ -16,11 +17,13 @@ func SetupRoutes(e *echo.Echo) {
 	api.GET("/gyms", handlers.GetGyms)
 	api.GET("/gyms/:identifier", handlers.GetGym)
 	api.POST("/demo-request", handlers.SubmitDemoRequest)
-
+	
 	// Protected Routes
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
-
+	
+	protected.POST("/gym", handlers.AddGym,middleware.RoleScope("SuperAdmin"));
+	
 	// Auth (protected)
 	protected.GET("/auth/me", handlers.GetMe)
 
