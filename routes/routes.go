@@ -6,8 +6,9 @@ import (
 
 func SetupRoutes(e *echo.Echo) {
 	AuthRoutes(e)
-	UserRoutes(e)
 	GymRoutes(e)
+	MembershipRoutes(e)
+	UserRoutes(e)
 	// api := e.Group("/api")
 
 	// // Public Routes

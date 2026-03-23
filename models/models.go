@@ -45,6 +45,7 @@ type Gym struct {
 	Users    []User `gorm:"foreignKey:GymID"`
 }
 
+// deal provided by the gym
 type MembershipPlan struct {
 	ID        uint           `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time      `json:"createdAt"`
@@ -57,6 +58,19 @@ type MembershipPlan struct {
 	IsActive       bool    `json:"is_active" gorm:"default:true"` // is its a active plan
 }
 
+// deal provided by the gym and taken by the user
+type Addon struct {
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	GymID    uint    `json:"gym_id" gorm:"index"`
+	Name     string  `json:"name"`
+	Price    float64 `json:"price"`
+	IsActive bool    `json:"is_active" gorm:"default:true"`
+}
+
+// deal provided by the gym and taken by the user
 type Subscription struct {
 	ID        uint           `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time      `json:"createdAt"`
@@ -105,16 +119,7 @@ type WorkoutPlan struct {
 	Description string `json:"description"`
 }
 
-type Addon struct {
-	ID        uint           `gorm:"primarykey" json:"id"`
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	GymID    uint    `json:"gym_id" gorm:"index"`
-	Name     string  `json:"name"`
-	Price    float64 `json:"price"`
-	IsActive bool    `json:"is_active" gorm:"default:true"`
-}
+
 
 func (g *Gym) BeforeCreate(tx *gorm.DB) (err error) {
 	g.Name = strings.TrimSpace(g.Name)

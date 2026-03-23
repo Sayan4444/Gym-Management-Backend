@@ -10,48 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type CreatePlanRequest struct {
-	Name           string  `json:"name"`
-	DurationMonths int     `json:"duration_months"`
-	Price          float64 `json:"price"`
-}
 
-func CreatePlan(c echo.Context) error {
-	var req CreatePlanRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
-	}
-
-	gymIDRaw := c.Get("gym_id")
-	var gymID uint
-	if gymIDRaw != nil {
-		gymID = uint(gymIDRaw.(float64))
-	}
-
-	plan := models.MembershipPlan{
-		GymID:          gymID,
-		Name:           req.Name,
-		DurationMonths: req.DurationMonths,
-		Price:          req.Price,
-		IsActive:       true,
-	}
-
-	if err := database.DB.Create(&plan).Error; err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not create plan"})
-	}
-	return c.JSON(http.StatusCreated, plan)
-}
-
-func GetPlans(c echo.Context) error {
-	var plans []models.MembershipPlan
-	gymIDRaw := c.Get("gym_id")
-	if gymIDRaw != nil {
-		database.DB.Where("gym_id = ?", uint(gymIDRaw.(float64))).Find(&plans)
-	} else {
-		database.DB.Find(&plans)
-	}
-	return c.JSON(http.StatusOK, plans)
-}
 
 type AssignSubscriptionRequest struct {
 	UserID uint `json:"user_id"`
