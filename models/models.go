@@ -1,8 +1,12 @@
 package models
 
-import (
-	"gorm.io/gorm"
+import (	
+	"errors"
+	"strings"
 	"time"
+
+	"github.com/gosimple/slug"
+	"gorm.io/gorm"
 )
 
 type User struct {
@@ -110,4 +114,18 @@ type Addon struct {
 	Name     string  `json:"name"`
 	Price    float64 `json:"price"`
 	IsActive bool    `json:"is_active" gorm:"default:true"`
+}
+
+func (g *Gym) BeforeCreate(tx *gorm.DB) (err error) {
+	g.Name = strings.TrimSpace(g.Name)
+	g.Address = strings.TrimSpace(g.Address)
+	g.Whatsapp = strings.TrimSpace(g.Whatsapp)
+
+	if g.Name == "" || g.Address == "" || g.Whatsapp == "" {
+		return errors.New("name, address, and whatsapp are required")
+	}
+
+	g.Slug = slug.Make(g.Name)
+
+	return nil
 }

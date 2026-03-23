@@ -79,7 +79,7 @@ func GetGyms(c echo.Context) error {
 	if err := database.DB.Find(&gyms).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch gyms"})
 	}
-	return c.JSON(http.StatusOK, gyms)
+	return c.JSON(http.StatusOK, map[string]any{"count": len(gyms), "gyms": gyms})
 }
 
 func GetGym(c echo.Context) error {
@@ -101,8 +101,67 @@ func AddGym(c echo.Context) error {
 	if err := c.Bind(&gym); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})	
 	}
+
 	if err := database.DB.Create(&gym).Error; err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create gym"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, gym)
+}
+
+func UpdateGym(c echo.Context) error {
+	gymIdentifier := c.Param("identifier")
+	role := c.Get("role").(string)
+
+	var gym models.Gym
+
+	// Try fetching by slug first, then by ID
+	if err := database.DB.Where("slug = ?", gymIdentifier).First(&gym).Error; err != nil {
+		if err := database.DB.First(&gym, gymIdentifier).Error; err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
+		}
+	}
+
+	// Check permissions
+	if role != "SuperAdmin" {
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. No gym associated."})
+		}
+		userGymID := uint(gymIDRaw.(float64))
+		if role != "GymAdmin" || userGymID != gym.ID {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. You can only update your own gym."})
+		}
+	}
+
+	// We only want to update fields provided, but 'Bind' overwrites based on json. 
+	// For a safer implementation, we parse specifically passing to updates.
+	// But sticking with `Bind` and `Save` is standard for this codebase so far.
+	if err := c.Bind(&gym); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	if err := database.DB.Save(&gym).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update gym"})
+	}
+
+	return c.JSON(http.StatusOK, gym)
+}
+
+func DeleteGym(c echo.Context) error {
+	gymIdentifier := c.Param("identifier")
+
+	var gym models.Gym
+
+	// Try fetching by slug first, then by ID
+	if err := database.DB.Where("slug = ?", gymIdentifier).First(&gym).Error; err != nil {
+		if err := database.DB.First(&gym, gymIdentifier).Error; err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
+		}
+	}
+
+	if err := database.DB.Delete(&gym).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete gym"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Gym deleted successfully"})
 }

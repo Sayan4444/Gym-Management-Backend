@@ -66,7 +66,7 @@ func GetUsers(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch users"})
 	}
 
-	return c.JSON(http.StatusCreated, map[string]any{"count": len(users), "users": users})
+	return c.JSON(http.StatusOK, map[string]any{"count": len(users), "users": users})
 }
 
 type UpdateProfileRequest struct {
@@ -104,15 +104,16 @@ func UpdateProfile(c echo.Context) error {
 	}
 
 	// Permission Checks
-	if role == "SuperAdmin" {
+	switch role {
+	case "SuperAdmin":
 		// Can update any user
-	} else if role == "GymAdmin" {
+	case "GymAdmin":
 		// GymAdmin can only update users in their gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil || user.GymID == nil || uint(gymIDRaw.(float64)) != *user.GymID {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 		}
-	} else {
+	default:
 		// Trainer and Member can only update themselves
 		if uint(targetID) != loggedInUserID {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
