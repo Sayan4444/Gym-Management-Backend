@@ -9,6 +9,7 @@ func SetupRoutes(e *echo.Echo) {
 	GymRoutes(e)
 	MembershipRoutes(e)
 	UserRoutes(e)
+	SubscriptionRoutes(e)
 	// api := e.Group("/api")
 
 	// // Public Routes

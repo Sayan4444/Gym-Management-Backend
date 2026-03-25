@@ -55,7 +55,10 @@ func GetAddons(c echo.Context) error {
 			database.DB.Find(&addons)
 		}
 	}
-	return c.JSON(http.StatusOK, addons)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"count":  len(addons),
+		"addons": addons,
+	})
 }
 
 type BuyAddonRequest struct {
