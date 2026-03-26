@@ -93,6 +93,9 @@ type Payment struct {
 	PaymentDate time.Time `json:"payment_date"`
 	Status      string    `json:"status"` // Paid, Pending, Failed
 	PaymentFor  string    `json:"payment_for"` // Membership Plan, Add-On
+	RazorpayOrderID   string `json:"razorpay_order_id"`
+	RazorpayPaymentID string `json:"razorpay_payment_id"`
+	RazorpaySignature string `json:"razorpay_signature"`
 }
 
 type Attendance struct {

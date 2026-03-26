@@ -11,6 +11,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	gommonlog "github.com/labstack/gommon/log"
 )
 
 func main() {
@@ -22,6 +23,7 @@ func main() {
 	utils.InitJWTSecret()
 
 	e := echo.New()
+	e.Logger.SetLevel(gommonlog.INFO)
 
 	frontend_url := os.Getenv("FRONTEND_URL")
 	if frontend_url == "" {
