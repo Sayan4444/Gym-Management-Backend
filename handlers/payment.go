@@ -147,6 +147,16 @@ func VerifyPayment(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to update payment status"})
 	}
 
+	if payment.PaymentFor == "Membership Plan" {
+		var user models.User
+		if err := database.DB.First(&user, payment.UserID).Error; err == nil && user.GymID != nil {
+			var plan models.MembershipPlan
+			if err := database.DB.Where("gym_id = ? AND price = ?", *user.GymID, payment.Amount).First(&plan).Error; err == nil {
+				_, _, _ = AssignSubscriptionLogic(payment.UserID, plan.ID)
+			}
+		}
+	}
+
 	go sendPaymentSuccessEmail(payment.UserID, payment.Amount, payment.PaymentFor)
 
 	return c.JSON(http.StatusOK, echo.Map{"message": "Payment verified successfully", "payment": payment})
@@ -188,15 +198,6 @@ func HandleWebhook(c echo.Context) error {
 	h.Write(bodyBytes)
 	expectedSignature := hex.EncodeToString(h.Sum(nil))
 
-	c.Logger().Infof("1. Secret Length: %d", len(secret)) // Ensures secret is loaded and not empty/padded
-    c.Logger().Infof("2. Header Signature: '%s'", signatureHeader)
-    c.Logger().Infof("3. Expected Signature: '%s'", expectedSignature)
-    
-    // Log the exact raw body string. The single quotes will help you spot 
-    // trailing newlines or spaces.
-    c.Logger().Infof("4. Raw Body: '%s'", string(bodyBytes)) 
-    // --- DEBUGGING BLOCK END ---
-
 	if subtle.ConstantTimeCompare([]byte(expectedSignature), []byte(signatureHeader)) != 1 {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Invalid signature"})
 	}
@@ -234,6 +235,15 @@ func HandleWebhook(c echo.Context) error {
 
 			var fullPayment models.Payment
 			if err := database.DB.Where("razorpay_order_id = ?", orderID).First(&fullPayment).Error; err == nil {
+				if fullPayment.PaymentFor == "Membership Plan" {
+					var user models.User
+					if err := database.DB.First(&user, fullPayment.UserID).Error; err == nil && user.GymID != nil {
+						var plan models.MembershipPlan
+						if err := database.DB.Where("gym_id = ? AND price = ?", *user.GymID, fullPayment.Amount).First(&plan).Error; err == nil {
+							_, _, _ = AssignSubscriptionLogic(fullPayment.UserID, plan.ID)
+						}
+					}
+				}
 				go sendPaymentSuccessEmail(fullPayment.UserID, fullPayment.Amount, fullPayment.PaymentFor)
 			}
 		}

@@ -11,8 +11,6 @@ func SubscriptionRoutes(e *echo.Echo) {
 	api := e.Group("/api")
 	
 	// Unprotected routes
-	api.POST("/webhooks/razorpay", handlers.RazorpayWebhook)
-	
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
 

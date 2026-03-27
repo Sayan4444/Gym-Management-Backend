@@ -1,16 +1,8 @@
 package handlers
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
 	"gym-saas/database"
@@ -26,22 +18,32 @@ type AssignSubscriptionRequest struct {
 	PlanID uint `json:"plan_id"`
 }
 
-func CreateSubscription(userID uint, planID uint) (*models.Subscription, error) {
+func AssignSubscriptionLogic(userID uint, planID uint) (*models.Subscription, *models.MembershipPlan, error) {
 	var user models.User
 	if err := database.DB.First(&user, userID).Error; err != nil {
-		return nil, errors.New("User not found")
+		return nil, nil, errors.New("User not found")
 	}
 
 	var plan models.MembershipPlan
 	if err := database.DB.First(&plan, planID).Error; err != nil {
-		return nil, errors.New("Plan not found")
+		return nil, nil, errors.New("Plan not found")
 	}
 
 	if user.GymID == nil || plan.GymID != *user.GymID {
-		return nil, errors.New("User and plan do not belong to the same gym")
+		return nil, nil, errors.New("User and plan do not belong to the same gym")
 	}
 
+	var latestSub models.Subscription
+	err := database.DB.Where("user_id = ? AND status IN ?", userID, []string{"Active", "Upcoming"}).Order("end_date desc").First(&latestSub).Error
+
 	startDate := time.Now()
+	status := "Active"
+
+	if err == nil {
+		startDate = latestSub.EndDate
+		status = "Upcoming"
+	}
+
 	endDate := startDate.AddDate(0, plan.DurationMonths, 0)
 
 	sub := models.Subscription{
@@ -49,24 +51,33 @@ func CreateSubscription(userID uint, planID uint) (*models.Subscription, error) 
 		PlanID:    plan.ID,
 		StartDate: startDate,
 		EndDate:   endDate,
-		Status:    "Active",
+		Status:    status,
 	}
 
 	if err := database.DB.Create(&sub).Error; err != nil {
+		return nil, nil, err
+	}
+
+	return &sub, &plan, nil
+}
+
+func CreateSubscription(userID uint, planID uint) (*models.Subscription, error) {
+	sub, plan, err := AssignSubscriptionLogic(userID, planID)
+	if err != nil {
 		return nil, err
 	}
 
 	payment := models.Payment{
 		UserID:      userID,
 		Amount:      plan.Price,
-		PaymentDate: startDate,
+		PaymentDate: sub.StartDate,
 		Status:      "Paid",
 	}
 	database.DB.Create(&payment)
 
 	go sendPaymentSuccessEmail(userID, plan.Price, plan.Name)
 
-	return &sub, nil
+	return sub, nil
 }
 
 func AssignSubscription(c echo.Context) error {
@@ -215,64 +226,4 @@ func DeleteSubscription(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Subscription deleted successfully"})
-}
-
-type RazorpayWebhookPayload struct {
-	Event   string `json:"event"`
-	Payload struct {
-		Payment struct {
-			Entity struct {
-				Notes struct {
-					UserID string `json:"user_id"`
-					PlanID string `json:"plan_id"`
-				} `json:"notes"`
-			} `json:"entity"`
-		} `json:"payment"`
-	} `json:"payload"`
-}
-
-func RazorpayWebhook(c echo.Context) error {
-	secret := os.Getenv("RAZORPAY_WEBHOOK_SECRET")
-	signatureHeader := c.Request().Header.Get("X-Razorpay-Signature")
-
-	bodyBytes, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to read body"})
-	}
-
-	// Verify signature if secret is provided
-	if secret != "" {
-		h := hmac.New(sha256.New, []byte(secret))
-		h.Write(bodyBytes)
-		expectedSignature := hex.EncodeToString(h.Sum(nil))
-
-		if subtle.ConstantTimeCompare([]byte(expectedSignature), []byte(signatureHeader)) != 1 {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid signature"})
-		}
-	} else {
-		// Log warning in development if secret isn't set
-		c.Logger().Warn("RAZORPAY_WEBHOOK_SECRET is not set, skipping signature verification")
-	}
-
-	var payload RazorpayWebhookPayload
-	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid payload"})
-	}
-
-	if payload.Event == "payment.captured" || payload.Event == "subscription.charged" {
-		userIDStr := payload.Payload.Payment.Entity.Notes.UserID
-		planIDStr := payload.Payload.Payment.Entity.Notes.PlanID
-
-		userID, _ := strconv.ParseUint(userIDStr, 10, 32)
-		planID, _ := strconv.ParseUint(planIDStr, 10, 32)
-
-		if userID > 0 && planID > 0 {
-			_, err := CreateSubscription(uint(userID), uint(planID))
-			if err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			}
-		}
-	}
-
-	return c.NoContent(http.StatusOK)
 }
