@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"gym-saas/database"
+	"gym-saas/jobs"
 	"gym-saas/routes"
 	"gym-saas/utils"
 
@@ -21,6 +22,7 @@ func main() {
 
 	database.InitDB()
 	utils.InitJWTSecret()
+	jobs.StartSubscriptionCron()
 
 	e := echo.New()
 	e.Logger.SetLevel(gommonlog.INFO)

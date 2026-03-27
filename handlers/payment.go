@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"gym-saas/database"
 	"gym-saas/models"
+	"gym-saas/utils"
 	"io"
 	"math"
 	"net/http"
@@ -146,6 +147,8 @@ func VerifyPayment(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to update payment status"})
 	}
 
+	go sendPaymentSuccessEmail(payment.UserID, payment.Amount, payment.PaymentFor)
+
 	return c.JSON(http.StatusOK, echo.Map{"message": "Payment verified successfully", "payment": payment})
 }
 
@@ -228,6 +231,11 @@ func HandleWebhook(c echo.Context) error {
 		if result.RowsAffected > 0 {
 			// This block only executes exactly ONCE per order, making it safe for sending emails/receipts
 			c.Logger().Infof("Order %s successfully marked as Paid", orderID)
+
+			var fullPayment models.Payment
+			if err := database.DB.Where("razorpay_order_id = ?", orderID).First(&fullPayment).Error; err == nil {
+				go sendPaymentSuccessEmail(fullPayment.UserID, fullPayment.Amount, fullPayment.PaymentFor)
+			}
 		}
 
 	case "payment.failed":
@@ -244,4 +252,13 @@ func HandleWebhook(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusOK)
+}
+
+func sendPaymentSuccessEmail(userID uint, amount float64, paymentFor string) {
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err == nil {
+		subject := "Payment Successful & Subscription Confirmed"
+		body := fmt.Sprintf("Dear %s,\n\nYour payment of ₹%.2f for %s has been successfully processed.\nYour subscription is now active!\n\nThank you for choosing us.\n\nBest Regards,\nGym Management Team", user.Name, amount, paymentFor)
+		go utils.SendEmail(user.Email, subject, body)
+	}
 }

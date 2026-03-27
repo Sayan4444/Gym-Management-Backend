@@ -64,6 +64,8 @@ func CreateSubscription(userID uint, planID uint) (*models.Subscription, error) 
 	}
 	database.DB.Create(&payment)
 
+	go sendPaymentSuccessEmail(userID, plan.Price, plan.Name)
+
 	return &sub, nil
 }
 
