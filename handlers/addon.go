@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"fmt"
+	"math"
 	"net/http"
-	"time"
+	"os"
 
 	"gym-saas/database"
 	"gym-saas/models"
 
 	"github.com/labstack/echo/v4"
+	razorpay "github.com/razorpay/razorpay-go"
 )
 
 type CreateAddonRequest struct {
@@ -77,21 +80,51 @@ func BuyAddon(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Addon not found"})
 	}
 
-	// Create payment
+	// Create payment record
 	payment := models.Payment{
-		UserID:      req.UserID,
-		Amount:      addon.Price,
-		PaymentDate: time.Now(),
-		Status:      "Paid",
-		PaymentFor:  "Add-On",
+		UserID:     req.UserID,
+		Amount:     addon.Price,
+		Status:     "Created",
+		PaymentFor: "Add-On: " + addon.Name,
 	}
 
 	if err := database.DB.Create(&payment).Error; err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to process payment"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to initialize payment record"})
+	}
+
+	receiptID := fmt.Sprintf("rcpt_addon_%v", payment.ID)
+	amountInPaise := int(math.Round(addon.Price * 100))
+
+	data := map[string]interface{}{
+		"amount":   amountInPaise,
+		"currency": "INR",
+		"receipt":  receiptID,
+	}
+
+	razorpayClient := razorpay.NewClient(os.Getenv("RAZORPAY_KEY_ID"), os.Getenv("RAZORPAY_KEY_SECRET"))
+	body, err := razorpayClient.Order.Create(data, nil)
+	if err != nil {
+		database.DB.Model(&payment).Update("Status", "Failed")
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create Razorpay order", "details": err.Error()})
+	}
+
+	orderIdInterface, ok := body["id"]
+	if !ok {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Razorpay response missing ID"})
+	}
+
+	orderId, ok := orderIdInterface.(string)
+	if !ok {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Razorpay order ID is not a string"})
+	}
+
+	if err := database.DB.Model(&payment).Update("RazorpayOrderID", orderId).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Order created but failed to link to database"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"message": "Addon purchased successfully",
-		"payment": payment,
+		"order_id": orderId,
+		"amount":   addon.Price,
+		"currency": "INR",
 	})
 }
