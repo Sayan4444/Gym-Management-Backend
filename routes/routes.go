@@ -17,6 +17,7 @@ func SetupRoutes(e *echo.Echo) {
 	SubscriptionRoutes(e)
 	PaymentRoutes(e)
 	AddonRoutes(e)
+	WorkoutPlanRoutes(e)
 	// api := e.Group("/api")
 
 	// // Public Routes

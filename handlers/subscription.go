@@ -33,16 +33,13 @@ func AssignSubscriptionLogic(userID uint, planID uint) (*models.Subscription, *m
 		return nil, nil, errors.New("User and plan do not belong to the same gym")
 	}
 
-	var latestSub models.Subscription
-	err := database.DB.Where("user_id = ? AND status IN ?", userID, []string{"Active", "Upcoming"}).Order("end_date desc").First(&latestSub).Error
+	var activeSub models.Subscription
+	if err := database.DB.Where("user_id = ? AND status = ?", userID, "Active").First(&activeSub).Error; err == nil {
+		return nil, nil, errors.New("user already has an active subscription")
+	}
 
 	startDate := time.Now()
 	status := "Active"
-
-	if err == nil {
-		startDate = latestSub.EndDate
-		status = "Upcoming"
-	}
 
 	endDate := startDate.AddDate(0, plan.DurationMonths, 0)
 
@@ -191,6 +188,12 @@ func UpdateSubscription(c echo.Context) error {
 		sub.EndDate = *req.EndDate
 	}
 	if req.Status != "" {
+		if req.Status == "Active" && sub.Status != "Active" {
+			var existingActive models.Subscription
+			if err := database.DB.Where("user_id = ? AND status = ? AND id != ?", sub.UserID, "Active", sub.ID).First(&existingActive).Error; err == nil {
+				return c.JSON(http.StatusConflict, map[string]string{"error": "user already has an active subscription"})
+			}
+		}
 		sub.Status = req.Status
 	}
 
