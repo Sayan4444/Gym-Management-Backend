@@ -22,6 +22,8 @@ import (
 type CreateOrderRequest struct {
 	Amount     float64 `json:"amount"` // in INR (not paise)
 	PaymentFor string  `json:"payment_for"`
+	PlanID     *uint   `json:"plan_id"`  // required when payment_for == "Membership Plan"
+	AddonID    *uint   `json:"addon_id"` // required when payment_for == "Add-On"
 }
 
 type VerifyPaymentRequest struct {
@@ -46,12 +48,46 @@ func CreateOrder(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Failed to retrieve user ID from token"})
 	}
 
-	// 1. Create the database record FIRST to get a unique identifier
+	// 1. Fetch user to get their GymID
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch user details"})
+	}
+	if user.GymID == nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "User is not associated with any gym"})
+	}
+	gymID := *user.GymID
+
+	// 2. Validate plan_id / addon_id against the user's gym
+	switch req.PaymentFor {
+	case "Membership Plan":
+		if req.PlanID == nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "plan_id is required for Membership Plan payments"})
+		}
+		var plan models.MembershipPlan
+		if err := database.DB.Where("id = ? AND gym_id = ?", *req.PlanID, gymID).First(&plan).Error; err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Membership plan not found for your gym"})
+		}
+	case "Add-On":
+		if req.AddonID == nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "addon_id is required for Add-On payments"})
+		}
+		var addon models.Addon
+		if err := database.DB.Where("id = ? AND gym_id = ?", *req.AddonID, gymID).First(&addon).Error; err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Add-on not found for your gym"})
+		}
+	default:
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid payment_for value. Must be 'Membership Plan' or 'Add-On'"})
+	}
+
+	// 3. Create the database record FIRST to get a unique identifier
 	payment := models.Payment{
 		UserID:     userID,
 		Amount:     req.Amount,
 		Status:     "Created", // Use "Created" or "Initiated" before Razorpay confirms
 		PaymentFor: req.PaymentFor,
+		PlanID:     req.PlanID,
+		AddonID:    req.AddonID,
 	}
 
 	if err := database.DB.Create(&payment).Error; err != nil {
@@ -147,13 +183,14 @@ func VerifyPayment(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to update payment status"})
 	}
 
-	if payment.PaymentFor == "Membership Plan" {
-		var user models.User
-		if err := database.DB.First(&user, payment.UserID).Error; err == nil && user.GymID != nil {
-			var plan models.MembershipPlan
-			if err := database.DB.Where("gym_id = ? AND price = ?", *user.GymID, payment.Amount).First(&plan).Error; err == nil {
-				_, _, _ = AssignSubscriptionLogic(payment.UserID, plan.ID)
-			}
+	switch payment.PaymentFor {
+	case "Membership Plan":
+		if payment.PlanID != nil {
+			_, _, _ = AssignSubscriptionLogic(payment.UserID, *payment.PlanID)
+		}
+	case "Add-On":
+		if payment.AddonID != nil {
+			_, _ = AssignAddonLogic(payment.UserID, *payment.AddonID, payment.ID)
 		}
 	}
 
@@ -167,9 +204,9 @@ type PaymentWebhookPayload struct {
 	Payload struct {
 		Payment struct {
 			Entity struct {
-				PaymentID      string `json:"paymentId"`
-				OrderID string `json:"order_id"`
-				Status  string `json:"status"`
+				PaymentID string `json:"paymentId"`
+				OrderID   string `json:"order_id"`
+				Status    string `json:"status"`
 			} `json:"entity"`
 		} `json:"payment"`
 	} `json:"payload"`
@@ -224,7 +261,7 @@ func HandleWebhook(c echo.Context) error {
 
 		if result.Error != nil {
 			c.Logger().Errorf("Failed to update payment status for order %s: %v", orderID, result.Error)
-			// Still return 200 so Razorpay doesn't retry, or 500 if you want a retry. 
+			// Still return 200 so Razorpay doesn't retry, or 500 if you want a retry.
 			// Usually, logging the error and returning 500 is safer for DB failures.
 			return c.NoContent(http.StatusInternalServerError)
 		}
@@ -235,13 +272,14 @@ func HandleWebhook(c echo.Context) error {
 
 			var fullPayment models.Payment
 			if err := database.DB.Where("razorpay_order_id = ?", orderID).First(&fullPayment).Error; err == nil {
-				if fullPayment.PaymentFor == "Membership Plan" {
-					var user models.User
-					if err := database.DB.First(&user, fullPayment.UserID).Error; err == nil && user.GymID != nil {
-						var plan models.MembershipPlan
-						if err := database.DB.Where("gym_id = ? AND price = ?", *user.GymID, fullPayment.Amount).First(&plan).Error; err == nil {
-							_, _, _ = AssignSubscriptionLogic(fullPayment.UserID, plan.ID)
-						}
+				switch fullPayment.PaymentFor {
+				case "Membership Plan":
+					if fullPayment.PlanID != nil {
+						_, _, _ = AssignSubscriptionLogic(fullPayment.UserID, *fullPayment.PlanID)
+					}
+				case "Add-On":
+					if fullPayment.AddonID != nil {
+						_, _ = AssignAddonLogic(fullPayment.UserID, *fullPayment.AddonID, fullPayment.ID)
 					}
 				}
 				go sendPaymentSuccessEmail(fullPayment.UserID, fullPayment.Amount, fullPayment.PaymentFor)

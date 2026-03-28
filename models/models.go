@@ -73,6 +73,18 @@ type Addon struct {
 	IsActive  bool           `json:"is_active" gorm:"default:true"`
 }
 
+// UserAddon represents an addon purchased by a user
+type UserAddon struct {
+	ID          uint           `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time      `json:"createdAt"`
+	UpdatedAt   time.Time      `json:"updatedAt"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	UserID      uint           `json:"user_id" gorm:"index"`
+	AddonID     uint           `json:"addon_id" gorm:"index"`
+	PaymentID   uint           `json:"payment_id" gorm:"index"`
+	PurchasedAt time.Time      `json:"purchased_at"`
+}
+
 // deal provided by the gym and taken by the user
 // Subcription taken by the user
 type Subscription struct {
@@ -97,6 +109,8 @@ type Payment struct {
 	PaymentDate       time.Time      `json:"payment_date"`
 	Status            string         `json:"status"`      // Paid, Pending, Failed
 	PaymentFor        string         `json:"payment_for"` // Membership Plan, Add-On
+	PlanID            *uint          `json:"plan_id" gorm:"index"`   // set when PaymentFor == "Membership Plan"
+	AddonID           *uint          `json:"addon_id" gorm:"index"`  // set when PaymentFor == "Add-On"
 	RazorpayOrderID   string         `json:"razorpay_order_id"`
 	RazorpayPaymentID string         `json:"razorpay_payment_id"`
 	RazorpaySignature string         `json:"razorpay_signature"`
