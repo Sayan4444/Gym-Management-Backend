@@ -37,6 +37,7 @@ func InitDB() {
 		&models.WorkoutPlan{},
 		&models.Addon{},
 		&models.UserAddon{},
+		&models.GymQRToken{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to auto-migrate database: %v", err)

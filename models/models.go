@@ -125,7 +125,20 @@ type Attendance struct {
 	Date      time.Time      `json:"date" gorm:"type:date"`
 	TimeIn    time.Time      `json:"time_in"`
 	TimeOut   *time.Time     `json:"time_out"` // Nullable if they haven't checked out
-	Source    string         `json:"source"`   // Manual, Biometric
+	Source    string         `json:"source"`   // Manual, Biometric, QR
+}
+
+// GymQRToken holds the currently active QR token for a gym.
+// The server rotates this token every 30 seconds.
+// A member scans the QR code and submits the token to mark attendance.
+type GymQRToken struct {
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	GymID     uint           `json:"gym_id" gorm:"uniqueIndex"` // one active token per gym
+	Token     string         `json:"token" gorm:"uniqueIndex"`
+	ExpiresAt time.Time      `json:"expires_at"`
 }
 
 type WorkoutPlan struct {
