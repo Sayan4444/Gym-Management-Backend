@@ -3,7 +3,6 @@ package handlers
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"gym-saas/database"
 	"gym-saas/models"
@@ -161,21 +160,3 @@ func DeleteAddon(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Addon deleted successfully"})
 }
-
-// AssignAddonLogic records a UserAddon purchase for the given user, addon, and payment.
-// Returns the created UserAddon and an error (if any).
-func AssignAddonLogic(userID uint, addonID uint, paymentID uint) (*models.UserAddon, error) {
-	userAddon := models.UserAddon{
-		UserID:      userID,
-		AddonID:     addonID,
-		PaymentID:   paymentID,
-		PurchasedAt: time.Now(),
-	}
-
-	if err := database.DB.Create(&userAddon).Error; err != nil {
-		return nil, err
-	}
-
-	return &userAddon, nil
-}
-

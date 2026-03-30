@@ -190,7 +190,7 @@ func VerifyPayment(c echo.Context) error {
 		}
 	case "Add-On":
 		if payment.AddonID != nil {
-			_, _ = AssignAddonLogic(payment.UserID, *payment.AddonID, payment.ID)
+			_, _, _ = AssignUserAddonLogic(payment.UserID, *payment.AddonID)
 		}
 	}
 
@@ -279,7 +279,7 @@ func HandleWebhook(c echo.Context) error {
 					}
 				case "Add-On":
 					if fullPayment.AddonID != nil {
-						_, _ = AssignAddonLogic(fullPayment.UserID, *fullPayment.AddonID, fullPayment.ID)
+						_, _, _ = AssignUserAddonLogic(fullPayment.UserID, *fullPayment.AddonID)
 					}
 				}
 				go sendPaymentSuccessEmail(fullPayment.UserID, fullPayment.Amount, fullPayment.PaymentFor)

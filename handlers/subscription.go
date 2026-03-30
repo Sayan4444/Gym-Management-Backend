@@ -18,6 +18,7 @@ type AssignSubscriptionRequest struct {
 	PlanID uint `json:"plan_id"`
 }
 
+// this has the actual logic of creating the subscription
 func AssignSubscriptionLogic(userID uint, planID uint) (*models.Subscription, *models.MembershipPlan, error) {
 	var user models.User
 	if err := database.DB.First(&user, userID).Error; err != nil {
@@ -58,25 +59,6 @@ func AssignSubscriptionLogic(userID uint, planID uint) (*models.Subscription, *m
 	return &sub, &plan, nil
 }
 
-func CreateSubscription(userID uint, planID uint) (*models.Subscription, error) {
-	sub, plan, err := AssignSubscriptionLogic(userID, planID)
-	if err != nil {
-		return nil, err
-	}
-
-	payment := models.Payment{
-		UserID:      userID,
-		Amount:      plan.Price,
-		PaymentDate: sub.StartDate,
-		Status:      "Paid",
-	}
-	database.DB.Create(&payment)
-
-	go sendPaymentSuccessEmail(userID, plan.Price, plan.Name)
-
-	return sub, nil
-}
-
 func AssignSubscription(c echo.Context) error {
 	var req AssignSubscriptionRequest
 	if err := c.Bind(&req); err != nil {
@@ -98,7 +80,7 @@ func AssignSubscription(c echo.Context) error {
 		}
 	}
 
-	sub, err := CreateSubscription(req.UserID, req.PlanID)
+	sub, _, err := AssignSubscriptionLogic(req.UserID, req.PlanID)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}

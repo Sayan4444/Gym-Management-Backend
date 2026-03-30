@@ -139,8 +139,24 @@ func GetMembershipPlansByGym(c echo.Context) error {
 
 func GetMembershipPlans(c echo.Context) error {
 	var plans []models.MembershipPlan
-	if err := database.DB.Find(&plans).Error; err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
+	
+	gymIDRaw := c.Get("gym_id")
+	if gymIDRaw != nil {	
+		if err := database.DB.Where("gym_id = ?", uint(gymIDRaw.(float64))).Find(&plans).Error; err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
+		}
+	} else {
+		// SuperAdmin might request all plans? Or maybe we require a gym_id query param
+		gymIDStr := c.QueryParam("gym_id")
+		if gymIDStr != "" {
+			if err := database.DB.Where("gym_id = ?", gymIDStr).Find(&plans).Error; err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
+			}
+		} else {
+			if err := database.DB.Find(&plans).Error; err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
+			}
+		}
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{"count": len(plans), "plans": plans})
 }

@@ -81,7 +81,6 @@ type UserAddon struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 	UserID      uint           `json:"user_id" gorm:"index"`
 	AddonID     uint           `json:"addon_id" gorm:"index"`
-	PaymentID   uint           `json:"payment_id" gorm:"index"`
 	PurchasedAt time.Time      `json:"purchased_at"`
 }
 
