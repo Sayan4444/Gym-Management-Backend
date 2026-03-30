@@ -14,6 +14,8 @@ import (
 
 func GymRoutes(e *echo.Echo) {
 	api := e.Group("/api")
+	//identifier is [slug,gymId]
+	api.GET("/gym/:identifier", handlers.GetGym) 
 
 	// Protected Routes
 	protected := api.Group("")
@@ -21,7 +23,6 @@ func GymRoutes(e *echo.Echo) {
 	
 	protected.POST("/gym", handlers.AddGym, middleware.RoleScope("SuperAdmin"))
 	protected.GET("/gyms", handlers.GetGyms, middleware.RoleScope("SuperAdmin"))
-	protected.GET("/gym/:identifier", handlers.GetGym)
 	protected.PUT("/gym/:identifier", handlers.UpdateGym,middleware.RoleScope("SuperAdmin","GymAdmin"))
 	protected.DELETE("/gym/:identifier", handlers.DeleteGym, middleware.RoleScope("SuperAdmin"))
 }

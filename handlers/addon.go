@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"gym-saas/database"
@@ -22,14 +23,19 @@ func CreateAddon(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
-	gymIDRaw := c.Get("gym_id")
-	if gymIDRaw == nil {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": "Missing gym_id"})
+	gymIDParam := c.Param("gymId")
+	gymIDFromParam, err := strconv.ParseUint(gymIDParam, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
 	}
-	gymID := uint(gymIDRaw.(float64))
+
+	gymIDRaw := c.Get("gym_id")
+	if gymIDRaw == nil || uint(gymIDRaw.(float64)) != uint(gymIDFromParam) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to create addons for this gym"})
+	}
 
 	addon := models.Addon{
-		GymID:    gymID,
+		GymID:    uint(gymIDFromParam),
 		Name:     req.Name,
 		Price:    req.Price,
 		IsActive: req.IsActive,
@@ -44,7 +50,7 @@ func CreateAddon(c echo.Context) error {
 func GetAddons(c echo.Context) error {
 	var addons []models.Addon
 	gymIDRaw := c.Get("gym_id")
-	if gymIDRaw != nil {
+	if gymIDRaw != nil {	
 		database.DB.Where("gym_id = ?", uint(gymIDRaw.(float64))).Find(&addons)
 	} else {
 		// SuperAdmin might request all addons? Or maybe we require a gym_id query param
@@ -61,28 +67,65 @@ func GetAddons(c echo.Context) error {
 	})
 }
 
+func GetAddonsByGym(c echo.Context) error {
+	gymID := c.Param("gymId")
+	
+	var addons []models.Addon
+	if err := database.DB.Where("gym_id = ? AND is_active = ?", gymID, true).Find(&addons).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch addons"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"count":  len(addons),
+		"addons": addons,
+	})
+}
+
 type BuyAddonRequest struct {
 	UserID  uint `json:"user_id"`
 	AddonID uint `json:"addon_id"`
 }
 
 func UpdateAddon(c echo.Context) error {
-	id := c.Param("id")
-	var addon models.Addon
-	if err := database.DB.First(&addon, id).Error; err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Addon not found"})
+	addonID := c.Param("addonId")
+	gymIDParam := c.Param("gymId")
+
+	gymIDFromParam, err := strconv.ParseUint(gymIDParam, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
 	}
 
-	var req CreateAddonRequest
+	var req map[string]interface{}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
-	if err := database.DB.Model(&addon).Updates(models.Addon{
-		Name:     req.Name,
-		Price:    req.Price,
-		IsActive: req.IsActive,
-	}).Error; err != nil {
+	updateData := make(map[string]interface{})
+	if val, ok := req["name"]; ok {
+		updateData["name"] = val
+	}
+	if val, ok := req["price"]; ok {
+		updateData["price"] = val
+	}
+	if val, ok := req["is_active"]; ok {
+		updateData["is_active"] = val
+	}
+
+	var addon models.Addon
+	if err := database.DB.First(&addon, addonID).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Addon not found"})
+	}
+
+	if addon.GymID != uint(gymIDFromParam) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Addon does not belong to the specified gym"})
+	}
+
+	gymIDRaw := c.Get("gym_id")
+	if gymIDRaw == nil || uint(gymIDRaw.(float64)) != addon.GymID {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to update this addon"})
+	}
+
+	if err := database.DB.Model(&addon).Updates(updateData).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update addon"})
 	}
 
@@ -90,10 +133,26 @@ func UpdateAddon(c echo.Context) error {
 }
 
 func DeleteAddon(c echo.Context) error {
-	id := c.Param("id")
+	addonID := c.Param("addonId")
+	gymIDParam := c.Param("gymId")
+
+	gymIDFromParam, err := strconv.ParseUint(gymIDParam, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
+	}
+
 	var addon models.Addon
-	if err := database.DB.First(&addon, id).Error; err != nil {
+	if err := database.DB.First(&addon, addonID).Error; err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Addon not found"})
+	}
+
+	if addon.GymID != uint(gymIDFromParam) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Addon does not belong to the specified gym"})
+	}
+
+	gymIDRaw := c.Get("gym_id")
+	if gymIDRaw == nil || uint(gymIDRaw.(float64)) != addon.GymID {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to delete this addon"})
 	}
 
 	if err := database.DB.Delete(&addon).Error; err != nil {

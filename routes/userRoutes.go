@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 )
+
 // super-admin can get all the users and update any details about the user
 // admin can get all the users of their gym and update any details
 // trainer can get all the user of their gym under him but cant update any details

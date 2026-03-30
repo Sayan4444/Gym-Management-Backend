@@ -9,13 +9,17 @@ import (
 
 func AddonRoutes(e *echo.Echo) {
 	api := e.Group("/api")
-
-	api.GET("/addons", handlers.GetAddons)
-
+	
+	// Public Routes
+	// View the addons by the gym id - public route
+	api.GET("/gyms/:gymId/addons", handlers.GetAddonsByGym)
+	api.GET("/addons", handlers.GetAddons) // Viewable by everyone
+	
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
-
-	protected.POST("/addons", handlers.CreateAddon, middleware.RoleScope("SuperAdmin", "GymAdmin"))
-	protected.PUT("/addons/:id", handlers.UpdateAddon, middleware.RoleScope("SuperAdmin", "GymAdmin"))
-	protected.DELETE("/addons/:id", handlers.DeleteAddon, middleware.RoleScope("SuperAdmin", "GymAdmin"))
+	
+	// GymId is automatically inferred from the auth token used to sign in
+	protected.POST("/gyms/:gymId/addon", handlers.CreateAddon, middleware.RoleScope("SuperAdmin","GymAdmin"))
+	protected.PUT("/gyms/:gymId/addon/:addonId", handlers.UpdateAddon, middleware.RoleScope("SuperAdmin","GymAdmin"))
+	protected.DELETE("/gyms/:gymId/addon/:addonId", handlers.DeleteAddon, middleware.RoleScope("SuperAdmin","GymAdmin"))
 }
