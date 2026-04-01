@@ -14,8 +14,8 @@ func WorkoutPlanRoutes(e *echo.Echo) {
 	// Create: only a Trainer (who is the member's assigned trainer) can create
 	protected.POST("/workout-plan", handlers.CreateWorkoutPlan, middleware.RoleScope("Trainer"))
 
-	// Read: member can see their own plans
-	protected.GET("/workout-plan", handlers.GetWorkoutPlans, middleware.RoleScope("Member"))
+	// Read: users can see plans according to their roles
+	protected.GET("/workout-plan", handlers.GetWorkoutPlans)
 
 	// Update: Trainer (own plans), GymAdmin, SuperAdmin
 	protected.PUT("/workout-plan/:id", handlers.UpdateWorkoutPlan, middleware.RoleScope("Trainer", "GymAdmin"))

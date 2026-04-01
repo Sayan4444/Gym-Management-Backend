@@ -52,7 +52,7 @@ func GetUsers(c echo.Context) error {
 
 	roleFilter := c.QueryParam("role")
 	if roleFilter != "" {
-		query = query.Where("role = ?", roleFilter)
+		query = query.Where("users.role = ?", roleFilter)
 	}
 
 	if c.QueryParam("is_premium") == "true" {
@@ -60,7 +60,20 @@ func GetUsers(c echo.Context) error {
 			Joins("JOIN membership_plans ON membership_plans.id = subscriptions.plan_id").
 			Where("subscriptions.status = ?", "Active").
 			Where("membership_plans.name ILIKE ?", "%premium%")
+	} else if subStatus := c.QueryParam("subscription_status"); subStatus != "" && subStatus != "all" {
+		query = query.Joins("LEFT JOIN subscriptions ON subscriptions.user_id = users.id")
+		if subStatus == "none" {
+			query = query.Where("subscriptions.id IS NULL")
+		} else {
+			query = query.Where("subscriptions.status = ?", subStatus)
+		}
 	}
+
+	if search := c.QueryParam("search"); search != "" {
+		query = query.Where("users.name ILIKE ? OR users.email ILIKE ? OR users.phone ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%")
+	}
+
+	query = query.Order("users.created_at DESC")
 
 	if err := query.Find(&users).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch users"})

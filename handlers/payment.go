@@ -310,3 +310,72 @@ func sendPaymentSuccessEmail(userID uint, amount float64, paymentFor string) {
 		go utils.SendEmail(user.Email, subject, body)
 	}
 }
+
+func GetPayments(c echo.Context) error {
+	var payments []models.Payment
+	query := database.DB.Model(&models.Payment{}).Joins("JOIN users ON users.id = payments.user_id").Preload("User")
+
+	// Role-based filtering
+	roleRaw := c.Get("role")
+	role, ok := roleRaw.(string)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+	}
+
+	switch role {
+	case "SuperAdmin":
+		if gymID := c.QueryParam("gym_id"); gymID != "" {
+			query = query.Where("users.gym_id = ?", gymID)
+		}
+	case "GymAdmin":
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil {
+			return c.JSON(http.StatusForbidden, echo.Map{"error": "Gym ID required"})
+		}
+		query = query.Where("users.gym_id = ?", uint(gymIDRaw.(float64)))
+	default: // Trainer, Member
+		userIDRaw := c.Get("user_id")
+		if userIDRaw == nil {
+			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+		}
+		query = query.Where("payments.user_id = ?", uint(userIDRaw.(float64)))
+	}
+
+	// Query Filters
+	if status := c.QueryParam("status"); status != "" && status != "all" {
+		query = query.Where("payments.status = ?", status)
+	}
+	if search := c.QueryParam("search"); search != "" {
+		query = query.Where("users.name ILIKE ?", "%"+search+"%")
+	}
+	if targetUserID := c.QueryParam("user_id"); targetUserID != "" {
+		query = query.Where("payments.user_id = ?", targetUserID)
+	}
+
+	if err := query.Order("payments.created_at DESC").Find(&payments).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch payments"})
+	}
+
+	// We typically return the User information attached to the Payment for frontend display
+	// Since we preloaded "User", it won't be in the base struct by default if not defined.
+	// Wait, is 'User' a field in models.Payment? Let's check. If not, we map and attach.
+	
+	// Let's create an anonymous struct to embed user name so the frontend gets it
+	type PaymentWithUser struct {
+		models.Payment
+		UserName string `json:"user_name"`
+	}
+	
+	var result []PaymentWithUser
+	for _, p := range payments {
+		var user models.User
+		database.DB.First(&user, p.UserID)
+		result = append(result, PaymentWithUser{
+			Payment:  p,
+			UserName: user.Name,
+		})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"count": len(result), "payments": result})
+}
+

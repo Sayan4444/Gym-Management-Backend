@@ -59,16 +59,50 @@ func CreateWorkoutPlan(c echo.Context) error {
 	return c.JSON(http.StatusCreated, plan)
 }
 
-// GetWorkoutPlans - A member can see their own workout plans.
+// GetWorkoutPlans - A user can see workout plans according to their role.
 func GetWorkoutPlans(c echo.Context) error {
-	userIDRaw := c.Get("user_id")
-	if userIDRaw == nil {
+	var plans []models.WorkoutPlan
+	query := database.DB.Model(&models.WorkoutPlan{})
+
+	roleRaw := c.Get("role")
+	role, ok := roleRaw.(string)
+	if !ok {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
-	memberID := uint(userIDRaw.(float64))
 
-	var plans []models.WorkoutPlan
-	if err := database.DB.Where("member_id = ?", memberID).Find(&plans).Error; err != nil {
+	switch role {
+	case "SuperAdmin":
+		if gymID := c.QueryParam("gym_id"); gymID != "" {
+			query = query.Where("gym_id = ?", gymID)
+		}
+	case "GymAdmin":
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID required"})
+		}
+		query = query.Where("gym_id = ?", uint(gymIDRaw.(float64)))
+	case "Trainer":
+		userIDRaw := c.Get("user_id")
+		if userIDRaw == nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+		}
+		query = query.Where("trainer_id = ?", uint(userIDRaw.(float64)))
+	default: // Member
+		userIDRaw := c.Get("user_id")
+		if userIDRaw == nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+		}
+		query = query.Where("member_id = ?", uint(userIDRaw.(float64)))
+	}
+
+	if targetMemberID := c.QueryParam("member_id"); targetMemberID != "" {
+		query = query.Where("member_id = ?", targetMemberID)
+	}
+	if targetTrainerID := c.QueryParam("trainer_id"); targetTrainerID != "" {
+		query = query.Where("trainer_id = ?", targetTrainerID)
+	}
+
+	if err := query.Order("created_at DESC").Find(&plans).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch workout plans"})
 	}
 

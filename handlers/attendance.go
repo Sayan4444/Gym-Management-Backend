@@ -216,3 +216,68 @@ func MarkManualAttendance(c echo.Context) error {
 		"attendance": attendance,
 	})
 }
+
+func GetAttendance(c echo.Context) error {
+	var records []models.Attendance
+	query := database.DB.Model(&models.Attendance{}).Joins("JOIN users ON users.id = attendances.user_id").Preload("User")
+
+	roleRaw := c.Get("role")
+	role, ok := roleRaw.(string)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+	}
+
+	switch role {
+	case "SuperAdmin":
+		if gymID := c.QueryParam("gym_id"); gymID != "" {
+			query = query.Where("users.gym_id = ?", gymID)
+		}
+	case "GymAdmin":
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil {
+			return c.JSON(http.StatusForbidden, echo.Map{"error": "Gym ID required"})
+		}
+		query = query.Where("users.gym_id = ?", uint(gymIDRaw.(float64)))
+	default: // Trainer, Member
+		userIDRaw := c.Get("user_id")
+		if userIDRaw == nil {
+			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+		}
+		query = query.Where("attendances.user_id = ?", uint(userIDRaw.(float64)))
+	}
+
+	if date := c.QueryParam("date"); date != "" {
+		// Parse date yyyy-mm-dd
+		parsedDate, err := time.Parse("2006-01-02", date)
+		if err == nil {
+			query = query.Where("attendances.date = ?", parsedDate.Truncate(24 * time.Hour))
+		}
+	}
+	if search := c.QueryParam("search"); search != "" {
+		query = query.Where("users.name ILIKE ?", "%"+search+"%")
+	}
+	if targetUserID := c.QueryParam("user_id"); targetUserID != "" {
+		query = query.Where("attendances.user_id = ?", targetUserID)
+	}
+
+	if err := query.Order("attendances.time_in DESC").Find(&records).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch attendance records"})
+	}
+
+	type AttendanceWithUser struct {
+		models.Attendance
+		UserName string `json:"user_name"`
+	}
+
+	var result []AttendanceWithUser
+	for _, a := range records {
+		var user models.User
+		database.DB.First(&user, a.UserID)
+		result = append(result, AttendanceWithUser{
+			Attendance: a,
+			UserName:   user.Name,
+		})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"count": len(result), "attendance": result})
+}
