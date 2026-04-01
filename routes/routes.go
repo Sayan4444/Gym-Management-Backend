@@ -19,4 +19,5 @@ func SetupRoutes(e *echo.Echo) {
 	AddonRoutes(e)
 	WorkoutPlanRoutes(e)
 	AttendanceRoutes(e)
+	DashboardRoutes(e)
 }
