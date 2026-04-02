@@ -72,29 +72,34 @@ func GetWorkoutPlans(c echo.Context) error {
 
 	switch role {
 	case "SuperAdmin":
+		// SuperAdmins can see everything, but can optionally scope down to a specific gym via query params
 		if gymID := c.QueryParam("gym_id"); gymID != "" {
 			query = query.Where("gym_id = ?", gymID)
 		}
 	case "GymAdmin":
+		// GymAdmins are strictly restricted to data within their own gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID required"})
 		}
 		query = query.Where("gym_id = ?", uint(gymIDRaw.(float64)))
 	case "Trainer":
+		// Trainers can only see workout plans they have authored
 		userIDRaw := c.Get("user_id")
 		if userIDRaw == nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 		}
 		query = query.Where("trainer_id = ?", uint(userIDRaw.(float64)))
 	default: // Member
+		// Members can only see workout plans assigned to them
 		userIDRaw := c.Get("user_id")
 		if userIDRaw == nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 		}
 		query = query.Where("member_id = ?", uint(userIDRaw.(float64)))
 	}
-
+	// Apply additional optional URL query parameters (e.g., ?member_id=5&trainer_id=2)
+    // Note: These append to the role-based restrictions above, they do not bypass them.
 	if targetMemberID := c.QueryParam("member_id"); targetMemberID != "" {
 		query = query.Where("member_id = ?", targetMemberID)
 	}

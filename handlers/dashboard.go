@@ -51,27 +51,54 @@ func GetSuperAdminDashboardStats(c echo.Context) error {
 		stats.TotalRevenue = *totalRevenue
 	}
 
+	// 1. Weekly Attendance (Current Week: Monday to Sunday)
 	var weeklyAttendance []WeeklyAttendance
-	for i := 6; i >= 0; i-- {
-		dayStart := todayStart.AddDate(0, 0, -i)
+	
+	// Determine how many days past Monday we are to find the start of the week
+	weekday := int(todayStart.Weekday())
+	if weekday == 0 {
+		weekday = 7 // Shift Sunday from 0 to 7 to make Monday the start of the week
+	}
+	mondayStart := todayStart.AddDate(0, 0, -weekday+1)
+
+	for i := 0; i < 7; i++ {
+		dayStart := mondayStart.AddDate(0, 0, i)
 		dayEnd := dayStart.AddDate(0, 0, 1)
+		
 		var count int64
-		database.DB.Model(&models.Attendance{}).Where("date >= ? AND date < ?", dayStart, dayEnd).Count(&count)
-		weeklyAttendance = append(weeklyAttendance, WeeklyAttendance{Day: dayStart.Format("Mon"), Count: count})
+		database.DB.Model(&models.Attendance{}).
+			Where("date >= ? AND date < ?", dayStart, dayEnd).
+			Count(&count)
+			
+		weeklyAttendance = append(weeklyAttendance, WeeklyAttendance{
+			Day:   dayStart.Format("Mon"), // Formats as "Mon", "Tue", etc.
+			Count: count,
+		})
 	}
 	stats.WeeklyAttendance = weeklyAttendance
 
+	// 2. Monthly Revenue (All 12 Months of the Current Year)
 	var monthlyRevenue []MonthlyRevenue
-	for i := 2; i >= 0; i-- {
-		mStart := time.Date(todayStart.Year(), todayStart.Month()-time.Month(i), 1, 0, 0, 0, 0, todayStart.Location())
+	currentYear := todayStart.Year()
+
+	for month := 1; month <= 12; month++ {
+		mStart := time.Date(currentYear, time.Month(month), 1, 0, 0, 0, 0, todayStart.Location())
 		mEnd := mStart.AddDate(0, 1, 0)
+		
 		var rev *float64
-		database.DB.Model(&models.Payment{}).Where("status = ? AND created_at >= ? AND created_at < ?", "Paid", mStart, mEnd).Select("sum(amount)").Scan(&rev)
+		database.DB.Model(&models.Payment{}).
+			Where("status = ? AND created_at >= ? AND created_at < ?", "Paid", mStart, mEnd).
+			Select("sum(amount)").Scan(&rev)
+			
 		var val float64
 		if rev != nil {
 			val = *rev
 		}
-		monthlyRevenue = append(monthlyRevenue, MonthlyRevenue{Month: mStart.Format("Jan '06"), Revenue: val})
+		
+		monthlyRevenue = append(monthlyRevenue, MonthlyRevenue{
+			Month:   mStart.Format("Jan"), // Formats as "Jan", "Feb", etc.
+			Revenue: val,
+		})
 	}
 	stats.MonthlyRevenue = monthlyRevenue
 
