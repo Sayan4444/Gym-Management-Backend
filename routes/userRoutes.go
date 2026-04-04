@@ -20,11 +20,18 @@ func UserRoutes(e *echo.Echo) {
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
 	
-	// Member API
+	/*
+		GET /users
+		GET /users?gym_id=5
+		GET /users?role=Trainer	
+		GET /users?is_premium=true - premium should be the name of the plan
+		GET /users?subscription_status= - search by subscription status
+		GET /users?search=alex - all users with name, email or phone with alex
+	*/
 	protected.GET("/users", handlers.GetUsers, middleware.RoleScope("SuperAdmin", "GymAdmin", "Trainer"))
 
 	// test these
-	protected.PUT("/users/:id", handlers.UpdateProfile, middleware.RoleScope("SuperAdmin", "GymAdmin", "Trainer", "Member")) // allow users to update their own profile
-	protected.DELETE("/users/:id", handlers.DeleteProfile, middleware.RoleScope("SuperAdmin", "GymAdmin", "Trainer", "Member"))
+	protected.PUT("/users/:id", handlers.UpdateProfile) // allow users to update their own profile
+	protected.DELETE("/users/:id", handlers.DeleteProfile)
  
 }

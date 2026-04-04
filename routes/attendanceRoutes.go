@@ -19,6 +19,7 @@ func AttendanceRoutes(e *echo.Echo) {
 
 	if isDev {
 		// Dev: skip role checks – any valid JWT can hit these endpoints.
+		// A unique QR token is generated per gym and is stored in the DB
 		protected.GET("/qr", handlers.GetQRToken)
 		protected.POST("/qr/scan", handlers.ScanQRAttendance)
 	} else {

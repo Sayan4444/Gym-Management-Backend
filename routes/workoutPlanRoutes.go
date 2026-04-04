@@ -15,6 +15,7 @@ func WorkoutPlanRoutes(e *echo.Echo) {
 	protected.POST("/workout-plan", handlers.CreateWorkoutPlan, middleware.RoleScope("Trainer"))
 
 	// Read: users can see plans according to their roles
+	// /workout-plan??member_id=5&trainer_id=2
 	protected.GET("/workout-plan", handlers.GetWorkoutPlans)
 
 	// Update: Trainer (own plans), GymAdmin, SuperAdmin

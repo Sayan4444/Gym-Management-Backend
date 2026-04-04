@@ -19,6 +19,21 @@ import (
 	razorpay "github.com/razorpay/razorpay-go"
 )
 
+/*
+	1. Frontend hits /createOrder.
+	2. Backend calls Razorpay API -> gets a unique OrderId.
+	3. Backend sends OrderId to the frontend.
+	4. Frontend opens the Razorpay UI using the OrderId -> user makes the payment.
+	5. Razorpay frontend returns 3 IDs to your frontend: orderId, paymentId, and signature.
+		paymentId = unique id returned after successful payment 
+		signature = HASH("orderId | paymentId",secret)
+	6. Frontend sends these 3 IDs to your backend.
+	7. Backend uses the orderId, paymentId, and razerPaySecret to recreate the signature.
+	8. Backend compares the recreated signature with the signature received from the frontend.
+	9. If they match exactly, the payment is verified.
+	10.Backend updates the database and responds to the frontend with a success status.
+*/
+
 type CreateOrderRequest struct {
 	Amount     float64 `json:"amount"` // in INR (not paise)
 	PaymentFor string  `json:"payment_for"`
@@ -38,15 +53,11 @@ func CreateOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request fields"})
 	}
 
-	userIdContext := c.Get("user_id")
-	var userID uint
-	if v, ok := userIdContext.(float64); ok {
-		userID = uint(v)
-	} else if v, ok := userIdContext.(uint); ok {
-		userID = v
-	} else {
+	userIDRaw := c.Get("user_id")
+	if userIDRaw==nil {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Failed to retrieve user ID from token"})
 	}
+	userID := uint(userIDRaw.(float64))
 
 	// 1. Fetch user to get their GymID
 	var user models.User
@@ -313,7 +324,7 @@ func sendPaymentSuccessEmail(userID uint, amount float64, paymentFor string) {
 
 func GetPayments(c echo.Context) error {
 	var payments []models.Payment
-	query := database.DB.Model(&models.Payment{}).Joins("JOIN users ON users.id = payments.user_id").Preload("User")
+	query := database.DB.Model(&models.Payment{}).Joins("JOIN users ON users.id = payments.user_id")
 
 	// Role-based filtering
 	roleRaw := c.Get("role")
@@ -324,6 +335,7 @@ func GetPayments(c echo.Context) error {
 
 	switch role {
 	case "SuperAdmin":
+		// They can fetch any users payment info
 		if gymID := c.QueryParam("gym_id"); gymID != "" {
 			query = query.Where("users.gym_id = ?", gymID)
 		}
@@ -334,6 +346,7 @@ func GetPayments(c echo.Context) error {
 		}
 		query = query.Where("users.gym_id = ?", uint(gymIDRaw.(float64)))
 	default: // Trainer, Member
+		// They can only get their own payment info
 		userIDRaw := c.Get("user_id")
 		if userIDRaw == nil {
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
@@ -355,10 +368,6 @@ func GetPayments(c echo.Context) error {
 	if err := query.Order("payments.created_at DESC").Find(&payments).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch payments"})
 	}
-
-	// We typically return the User information attached to the Payment for frontend display
-	// Since we preloaded "User", it won't be in the base struct by default if not defined.
-	// Wait, is 'User' a field in models.Payment? Let's check. If not, we map and attach.
 	
 	// Let's create an anonymous struct to embed user name so the frontend gets it
 	type PaymentWithUser struct {

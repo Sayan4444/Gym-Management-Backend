@@ -38,12 +38,12 @@ func rotateToken(gymID uint) (string, error) {
 	// Token is valid for 30 seconds.
 	expiresAt := time.Now().UTC().Add(30 * time.Second)
 
-	// Upsert: one row per gym. 
+	// Upsert: one row per gym.
 	// Assign ensures that if the record exists, it updates the Token and ExpiresAt fields.
 	result := database.DB.Where(models.GymQRToken{GymID: gymID}).
 		Assign(models.GymQRToken{Token: token, ExpiresAt: expiresAt}).
 		FirstOrCreate(&models.GymQRToken{})
-		
+
 	if result.Error != nil {
 		return "", result.Error
 	}
@@ -51,21 +51,14 @@ func rotateToken(gymID uint) (string, error) {
 	return token, nil
 }
 
-// ---------------------------------------------------------------------------
-// Handler: GET /api/attendance/qr  (tablet side)
-// ---------------------------------------------------------------------------
-
 func GetQRToken(c echo.Context) error {
-	gymIDCtx := c.Get("gym_id")
-	var gymID uint
-	switch v := gymIDCtx.(type) {
-	case float64:
-		gymID = uint(v)
-	case uint:
-		gymID = v
-	default:
+	gymIDRaw := c.Get("gym_id")
+
+	if gymIDRaw == nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "gym_id not found in token"})
 	}
+
+	gymID := gymIDRaw.(uint)
 
 	token, err := rotateToken(gymID)
 	if err != nil {
@@ -78,10 +71,6 @@ func GetQRToken(c echo.Context) error {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Handler: POST /api/attendance/qr/scan  (member mobile app)
-// ---------------------------------------------------------------------------
-
 type ScanQRRequest struct {
 	ScannedToken string `json:"scanned_token"`
 }
@@ -93,16 +82,11 @@ func ScanQRAttendance(c echo.Context) error {
 	}
 
 	// Resolve user from JWT.
-	userIDCtx := c.Get("user_id")
-	var userID uint
-	switch v := userIDCtx.(type) {
-	case float64:
-		userID = uint(v)
-	case uint:
-		userID = v
-	default:
+	userIDRaw := c.Get("user_id")
+	if userIDRaw == nil {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Failed to retrieve user ID from token"})
 	}
+	userID := userIDRaw.(uint)
 
 	// Look up the user to get their gym.
 	var user models.User
@@ -158,22 +142,14 @@ func ScanQRAttendance(c echo.Context) error {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Handler: POST /api/attendance/:userId  (GymAdmin – manual mark)
-// ---------------------------------------------------------------------------
-
 func MarkManualAttendance(c echo.Context) error {
 	// Resolve the admin's gym from their JWT.
-	gymIDCtx := c.Get("gym_id")
-	var adminGymID uint
-	switch v := gymIDCtx.(type) {
-	case float64:
-		adminGymID = uint(v)
-	case uint:
-		adminGymID = v
-	default:
+	gymIDRaw := c.Get("gym_id")
+
+	if gymIDRaw == nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "gym_id not found in token"})
 	}
+	adminGymID := gymIDRaw.(uint)
 
 	// Parse target user ID from URL param.
 	userIDParam := c.Param("userId")
@@ -229,16 +205,19 @@ func GetAttendance(c echo.Context) error {
 
 	switch role {
 	case "SuperAdmin":
+		// SuperAdmins see everything globally, but can optionally filter by a specific gym
 		if gymID := c.QueryParam("gym_id"); gymID != "" {
 			query = query.Where("users.gym_id = ?", gymID)
 		}
 	case "GymAdmin":
+		// GymAdmins are strictly restricted to viewing attendance for their own gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil {
 			return c.JSON(http.StatusForbidden, echo.Map{"error": "Gym ID required"})
 		}
 		query = query.Where("users.gym_id = ?", uint(gymIDRaw.(float64)))
 	default: // Trainer, Member
+		// Trainers and Members can only view their own personal attendance records
 		userIDRaw := c.Get("user_id")
 		if userIDRaw == nil {
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
@@ -246,24 +225,29 @@ func GetAttendance(c echo.Context) error {
 		query = query.Where("attendances.user_id = ?", uint(userIDRaw.(float64)))
 	}
 
+	// Filter by specific date (Expects format: YYYY-MM-DD)
 	if date := c.QueryParam("date"); date != "" {
 		// Parse date yyyy-mm-dd
 		parsedDate, err := time.Parse("2006-01-02", date)
 		if err == nil {
-			query = query.Where("attendances.date = ?", parsedDate.Truncate(24 * time.Hour))
+			query = query.Where("attendances.date = ?", parsedDate.Format("2006-01-02"))
 		}
 	}
+	// Search by user name (Case-insensitive partial match)
 	if search := c.QueryParam("search"); search != "" {
 		query = query.Where("users.name ILIKE ?", "%"+search+"%")
 	}
+	// Filter by a specific user ID (Useful for Admins looking up a specific member)
 	if targetUserID := c.QueryParam("user_id"); targetUserID != "" {
 		query = query.Where("attendances.user_id = ?", targetUserID)
 	}
 
+	// Execute the query, ordering by the most recent clock-ins first
 	if err := query.Order("attendances.time_in DESC").Find(&records).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch attendance records"})
 	}
 
+	// Define a custom struct to flatten the response payload for the frontend
 	type AttendanceWithUser struct {
 		models.Attendance
 		UserName string `json:"user_name"`
@@ -271,11 +255,13 @@ func GetAttendance(c echo.Context) error {
 
 	var result []AttendanceWithUser
 	for _, a := range records {
-		var user models.User
-		database.DB.First(&user, a.UserID)
+		userName := ""
+		if a.User != nil {
+			userName = a.User.Name
+		}
 		result = append(result, AttendanceWithUser{
 			Attendance: a,
-			UserName:   user.Name,
+			UserName:   userName,
 		})
 	}
 

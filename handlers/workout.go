@@ -117,61 +117,58 @@ func GetWorkoutPlans(c echo.Context) error {
 	})
 }
 
-// UpdateWorkoutPlanRequest only exposes fields that are safe to modify.
-// ID, GymID, TrainerID, MemberID, and timestamps are intentionally excluded
-// and cannot be changed via the update endpoint.
-// Pointer fields allow partial updates: omitted fields remain untouched.
 type UpdateWorkoutPlanRequest struct {
 	Title       *string `json:"title"`
 	Description *string `json:"description"`
 }
 
-// UpdateWorkoutPlan - The trainer who created it, GymAdmin, or SuperAdmin can update.
 func UpdateWorkoutPlan(c echo.Context) error {
-	id := c.Param("id")
+    id := c.Param("id")
 
-	var plan models.WorkoutPlan
-	if err := database.DB.First(&plan, id).Error; err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Workout plan not found"})
-	}
+    var plan models.WorkoutPlan
+    if err := database.DB.First(&plan, id).Error; err != nil {
+        return c.JSON(http.StatusNotFound, map[string]string{"error": "Workout plan not found"})
+    }
 
-	role := c.Get("role").(string)
-	userIDRaw := c.Get("user_id")
-	if userIDRaw == nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
-	}
-	userID := uint(userIDRaw.(float64))
+    role := c.Get("role").(string)
+    userIDRaw := c.Get("user_id")
+    if userIDRaw == nil {
+        return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+    }
+    userID := uint(userIDRaw.(float64))
 
-	// Trainers can only update plans they created
-	if role == "Trainer" && plan.TrainerID != userID {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update workout plans you created"})
-	}
+    // Handle role-based authorization using a switch case
+    switch role {
+    case "Trainer":
+        // Trainers can only update plans they created
+        if plan.TrainerID != userID {
+            return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update workout plans you created"})
+        }
+    case "GymAdmin":
+        gymIDRaw := c.Get("gym_id")
+        if gymIDRaw == nil {
+            return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID required"})
+        }
+        if plan.GymID != uint(gymIDRaw.(float64)) {
+            return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update workout plans within your own gym"})
+        }
+    default:
+        return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to update workout plans"})
+    }
 
-	var req UpdateWorkoutPlanRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
-	}
+    var req UpdateWorkoutPlanRequest
+    if err := c.Bind(&req); err != nil {
+        return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+    }
 
-	// Build update map with only the fields that were actually provided.
-	// Protected fields (ID, GymID, TrainerID, MemberID, timestamps) are never touched.
-	updates := map[string]interface{}{}
-	if req.Title != nil {
-		updates["title"] = *req.Title
-	}
-	if req.Description != nil {
-		updates["description"] = *req.Description
-	}
+    if err := database.DB.Model(&plan).Updates(req).Error; err != nil {
+        return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update workout plan"})
+    }
 
-	if len(updates) == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No fields provided to update"})
-	}
-
-	if err := database.DB.Model(&plan).Updates(updates).Error; err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update workout plan"})
-	}
-
-	return c.JSON(http.StatusOK, plan)
+    return c.JSON(http.StatusOK, plan)
 }
+
+
 
 // DeleteWorkoutPlan - The trainer who created it, GymAdmin, or SuperAdmin can delete.
 func DeleteWorkoutPlan(c echo.Context) error {
@@ -189,9 +186,24 @@ func DeleteWorkoutPlan(c echo.Context) error {
 	}
 	userID := uint(userIDRaw.(float64))
 
-	// Trainers can only delete plans they created
-	if role == "Trainer" && plan.TrainerID != userID {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only delete workout plans you created"})
+	// Handle role-based authorization using a switch case
+	switch role {
+	case "Trainer":
+		if plan.TrainerID != userID {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only delete workout plans you created"})
+		}
+	case "GymAdmin":
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID required"})
+		}
+		if plan.GymID != uint(gymIDRaw.(float64)) {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only delete workout plans within your own gym"})
+		}
+	case "SuperAdmin":
+		// SuperAdmin can delete any plan
+	default:
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to delete workout plans"})
 	}
 
 	if err := database.DB.Delete(&plan).Error; err != nil {

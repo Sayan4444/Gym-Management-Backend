@@ -121,6 +121,7 @@ type Attendance struct {
 	UpdatedAt time.Time      `json:"updatedAt"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 	UserID    uint           `json:"user_id" gorm:"index"`
+	User      *User          `json:"user" gorm:"foreignKey:UserID"`
 	Date      time.Time      `json:"date" gorm:"type:date"`
 	TimeIn    time.Time      `json:"time_in"`
 	TimeOut   *time.Time     `json:"time_out"` // Nullable if they haven't checked out

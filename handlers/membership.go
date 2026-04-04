@@ -10,14 +10,15 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type CreateMembershipPlanRequest struct {
-	Name           string  `json:"name"`
-	DurationMonths int     `json:"duration_months"`
-	Price          float64 `json:"price"`
+type MembershipPlanRequest struct {
+	Name           *string  `json:"name"`
+	DurationMonths *int     `json:"duration_months"`
+	Price          *float64 `json:"price"`
+	IsActive       *bool   `json:"is_active"`
 }
 
 func CreateMembershipPlan(c echo.Context) error {
-	var req CreateMembershipPlanRequest
+	var req MembershipPlanRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
@@ -33,17 +34,22 @@ func CreateMembershipPlan(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to create plans for this gym"})
 	}
 
+	if req.Name == nil || req.DurationMonths == nil || req.Price == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Missing required fields"})
+	}
+
 	plan := models.MembershipPlan{
 		GymID:          uint(gymIDFromParam),
-		Name:           req.Name,
-		DurationMonths: req.DurationMonths,
-		Price:          req.Price,
+		Name:           *req.Name,
+		DurationMonths: *req.DurationMonths,
+		Price:          *req.Price,
 		IsActive:       true,
 	}
 
 	if err := database.DB.Create(&plan).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not create plan"})
 	}
+
 	return c.JSON(http.StatusCreated, plan)
 }
 
@@ -56,43 +62,47 @@ func UpdateMembershipPlan(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
 	}
 
-	var req map[string]interface{}
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
-	}
-
-	updateData := make(map[string]interface{})
-	if val, ok := req["name"]; ok {
-		updateData["name"] = val
-	}
-	if val, ok := req["duration_months"]; ok {
-		updateData["duration_months"] = val
-	}
-	if val, ok := req["price"]; ok {
-		updateData["price"] = val
-	}
-	if val, ok := req["is_active"]; ok {
-		updateData["is_active"] = val
-	}
-
+	// 1. Fetch the existing plan first to check existence and ownership
 	var plan models.MembershipPlan
 	if err := database.DB.First(&plan, planID).Error; err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
 	}
 
+	// Verify the plan actually belongs to the gym specified in the URL
 	if plan.GymID != uint(gymIDFromParam) {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Plan does not belong to the specified gym"})
 	}
 
-	gymIDRaw := c.Get("gym_id")
-	if gymIDRaw == nil || uint(gymIDRaw.(float64)) != plan.GymID {
-		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to update this plan"})
+	// 2. Permission Checks using switch
+	role := c.Get("role").(string)
+
+	switch role {
+	case "SuperAdmin":
+		// SuperAdmin can update plans for any gym
+	case "GymAdmin":
+		// GymAdmin can only update plans belonging to their specific gym
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil || uint(gymIDRaw.(float64)) != plan.GymID {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to update this plan"})
+		}
+	default:
+		// Trainers or Members cannot update plans
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 	}
 
-	if err := database.DB.Model(&plan).Updates(updateData).Error; err != nil {
+	// 3. Bind the incoming JSON to our pointer-based request struct
+	var req MembershipPlanRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+	}
+
+	// 4. Perform the update. GORM will only update fields that are not nil in the req struct.
+	if err := database.DB.Model(&plan).Updates(req).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update plan"})
 	}
 
+	// Fetch the fully updated plan from the DB to return to the client
+	database.DB.First(&plan, plan.ID)
 	return c.JSON(http.StatusOK, plan)
 }
 
@@ -139,15 +149,13 @@ func GetMembershipPlansByGym(c echo.Context) error {
 
 func GetMembershipPlans(c echo.Context) error {
 	var plans []models.MembershipPlan
-	
-	gymIDRaw := c.Get("gym_id")
-	if gymIDRaw != nil {	
-		if err := database.DB.Where("gym_id = ?", uint(gymIDRaw.(float64))).Find(&plans).Error; err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
-		}
-	} else {
-		// SuperAdmin might request all plans? Or maybe we require a gym_id query param
+	role := c.Get("role").(string)
+
+	switch role {
+	case "SuperAdmin":
+		// SuperAdmin can fetch all plans, or filter by a specific gym using ?gym_id=123
 		gymIDStr := c.QueryParam("gym_id")
+		
 		if gymIDStr != "" {
 			if err := database.DB.Where("gym_id = ?", gymIDStr).Find(&plans).Error; err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
@@ -157,6 +165,26 @@ func GetMembershipPlans(c echo.Context) error {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
 			}
 		}
+
+	case "GymAdmin", "Trainer", "Member":
+		// Standard roles can only view membership plans associated with their own gym
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. No gym associated with your account."})
+		}
+		
+		gymID := uint(gymIDRaw.(float64))
+		if err := database.DB.Where("gym_id = ?", gymID).Find(&plans).Error; err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
+		}
+
+	default:
+		// Catch-all for any unknown roles
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"count": len(plans), "plans": plans})
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"count": len(plans),
+		"plans": plans,
+	})
 }

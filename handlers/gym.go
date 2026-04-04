@@ -96,16 +96,23 @@ func GetGym(c echo.Context) error {
 	return c.JSON(http.StatusOK, gym)
 }
 
+type GymRequest struct {
+	Name     *string `json:"name"`
+	Slug     *string `json:"slug"`
+	Address  *string `json:"address"`
+	Whatsapp *string `json:"whatsapp"`
+}
+
 func AddGym(c echo.Context) error {
-	var gym models.Gym
-	if err := c.Bind(&gym); err != nil {
+	var req GymRequest
+	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})	
 	}
 
-	if err := database.DB.Create(&gym).Error; err != nil {
+	if err := database.DB.Create(&req).Error; err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
-	return c.JSON(http.StatusOK, gym)
+	return c.JSON(http.StatusOK, req)
 }
 
 func UpdateGym(c echo.Context) error {
@@ -121,29 +128,37 @@ func UpdateGym(c echo.Context) error {
 		}
 	}
 
-	// Check permissions
-	if role != "SuperAdmin" {
+	// Permission Checks using switch
+	switch role {
+	case "SuperAdmin":
+		// SuperAdmin can update any gym
+	case "GymAdmin":
+		// GymAdmin can only update their own gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. No gym associated."})
 		}
 		userGymID := uint(gymIDRaw.(float64))
-		if role != "GymAdmin" || userGymID != gym.ID {
+		if userGymID != gym.ID {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. You can only update your own gym."})
 		}
+	default:
+		// Other roles (e.g., Trainer, Member) cannot update gym details
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 	}
 
-	// We only want to update fields provided, but 'Bind' overwrites based on json. 
-	// For a safer implementation, we parse specifically passing to updates.
-	// But sticking with `Bind` and `Save` is standard for this codebase so far.
-	if err := c.Bind(&gym); err != nil {
+	var req GymRequest
+	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	if err := database.DB.Save(&gym).Error; err != nil {
+	// Use Updates with the request struct to properly handle partial updates via pointers
+	if err := database.DB.Model(&gym).Updates(req).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update gym"})
 	}
 
+	// Fetch the updated gym to return the complete object
+	database.DB.First(&gym, gym.ID)
 	return c.JSON(http.StatusOK, gym)
 }
 

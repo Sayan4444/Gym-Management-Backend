@@ -77,27 +77,60 @@ func AssignUserAddon(c echo.Context) error {
 
 func GetUserAddons(c echo.Context) error {
 	var userAddons []models.UserAddon
-	
-	gymIDRaw := c.Get("gym_id")
-	userIDRaw := c.Get("user_id")
 
+	// Extract role safely from context
+	roleRaw := c.Get("role")
+	if roleRaw == nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Role missing from context"})
+	}
+	role := roleRaw.(string)
+
+	// Initialize the base query
 	query := database.DB.Model(&models.UserAddon{}).Select("user_addons.*")
-
-	// Filter by gym if it's a GymAdmin
-	if gymIDRaw != nil {
-		query = query.Joins("JOIN users ON users.id = user_addons.user_id").
-			Where("users.gym_id = ?", uint(gymIDRaw.(float64)))
-	}
-
-	// Filter by specific user if user_id is provided in query params
 	userIDParam := c.QueryParam("user_id")
-	if userIDParam != "" {
-		query = query.Where("user_addons.user_id = ?", userIDParam)
-	} else if userIDRaw != nil && c.Get("role").(string) == "Member" {
-		// If logged in as Member, they can only see their own
+
+	// Apply database-level filtering based on role
+	switch role {
+	case "SuperAdmin":
+		// SuperAdmin sees everything globally.
+		// Only filter by user_id if explicitly requested via query param.
+		if userIDParam != "" {
+			query = query.Where("user_addons.user_id = ?", userIDParam)
+		}
+
+	case "GymAdmin", "Trainer":
+		// GymAdmins and Trainers can only see addons tied to their specific gym.
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID missing for this role"})
+		}
+		gymID := uint(gymIDRaw.(float64))
+
+		// Optimize: Only JOIN the users table for roles that actually require checking the gym_id.
+		query = query.Joins("JOIN users ON users.id = user_addons.user_id").
+			Where("users.gym_id = ?", gymID)
+
+		// Allow admins/trainers to search for a specific user's addons within their gym.
+		if userIDParam != "" {
+			query = query.Where("user_addons.user_id = ?", userIDParam)
+		}
+
+	case "Member":
+		// Members can strictly only view their own addons.
+		// Optimize/Secure: Ignore userIDParam entirely to prevent unauthorized access.
+		userIDRaw := c.Get("user_id")
+		if userIDRaw == nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "User ID missing from context"})
+		}
+
+		// No JOIN required; directly query the user_id on the user_addons table.
 		query = query.Where("user_addons.user_id = ?", uint(userIDRaw.(float64)))
+
+	default:
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Invalid or unauthorized role"})
 	}
 
+	// Execute the finalized, optimized query
 	if err := query.Find(&userAddons).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch user addons"})
 	}
@@ -108,13 +141,15 @@ func GetUserAddons(c echo.Context) error {
 	})
 }
 
+// Struct modified to use pointers for partial updates via GORM
 type UpdateUserAddonRequest struct {
-	AddonID     uint       `json:"addon_id"`
-	PurchasedAt *time.Time `json:"purchased_at"`
+	AddonID     *uint      `json:"addon_id"`
 }
 
 func UpdateUserAddon(c echo.Context) error {
 	id := c.Param("id")
+	role := c.Get("role").(string)
+
 	var userAddon models.UserAddon
 	if err := database.DB.First(&userAddon, id).Error; err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "User addon not found"})
@@ -125,12 +160,19 @@ func UpdateUserAddon(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "User not found"})
 	}
 
-	role := c.Get("role").(string)
-	if role == "GymAdmin" {
+	// Permission Checks using switch
+	switch role {
+	case "SuperAdmin":
+		// SuperAdmin can update any user addon
+	case "GymAdmin":
+		// GymAdmin can only update addons for users in their gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil || user.GymID == nil || uint(gymIDRaw.(float64)) != *user.GymID {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update addons for users in your gym"})
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. You can only update addons for users in your gym"})
 		}
+	default:
+		// Other roles cannot update addon details
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 	}
 
 	var req UpdateUserAddonRequest
@@ -138,24 +180,24 @@ func UpdateUserAddon(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	if req.AddonID != 0 {
+	// Validate AddonID if it's being updated
+	if req.AddonID != nil {
 		var addon models.Addon
-		if err := database.DB.First(&addon, req.AddonID).Error; err != nil {
+		if err := database.DB.First(&addon, *req.AddonID).Error; err != nil {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "New addon not found"})
 		}
 		if user.GymID == nil || addon.GymID != *user.GymID {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "User and new addon do not belong to the same gym"})
 		}
-		userAddon.AddonID = req.AddonID
-	}
-	if req.PurchasedAt != nil {
-		userAddon.PurchasedAt = *req.PurchasedAt
 	}
 
-	if err := database.DB.Save(&userAddon).Error; err != nil {
+	// Use Updates with the request struct to properly handle partial updates via pointers
+	if err := database.DB.Model(&userAddon).Updates(req).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update user addon"})
 	}
 
+	// Fetch the updated user addon to return the complete object
+	database.DB.First(&userAddon, userAddon.ID)
 	return c.JSON(http.StatusOK, userAddon)
 }
 

@@ -90,27 +90,60 @@ func AssignSubscription(c echo.Context) error {
 
 func GetSubscriptions(c echo.Context) error {
 	var subs []models.Subscription
-	
-	gymIDRaw := c.Get("gym_id")
-	userIDRaw := c.Get("user_id")
 
+	// Extract role safely from context
+	roleRaw := c.Get("role")
+	if roleRaw == nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Role missing from context"})
+	}
+	role := roleRaw.(string)
+
+	// Initialize the base query
 	query := database.DB.Model(&models.Subscription{}).Select("subscriptions.*")
-
-	// Filter by gym if it's a GymAdmin
-	if gymIDRaw != nil {
-		query = query.Joins("JOIN users ON users.id = subscriptions.user_id").
-			Where("users.gym_id = ?", uint(gymIDRaw.(float64)))
-	}
-
-	// Filter by specific user if user_id is provided in query params (for admin viewing a member)
 	userIDParam := c.QueryParam("user_id")
-	if userIDParam != "" {
-		query = query.Where("subscriptions.user_id = ?", userIDParam)
-	} else if userIDRaw != nil && c.Get("role").(string) == "Member" {
-		// If logged in as Member, they can only see their own
+
+	// Apply database-level filtering based on role
+	switch role {
+	case "SuperAdmin":
+		// SuperAdmin sees everything globally.
+		// Only filter by user_id if explicitly requested via query param.
+		if userIDParam != "" {
+			query = query.Where("subscriptions.user_id = ?", userIDParam)
+		}
+
+	case "GymAdmin", "Trainer":
+		// GymAdmins and Trainers can only see subscriptions tied to their specific gym.
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID missing for this role"})
+		}
+		gymID := uint(gymIDRaw.(float64))
+
+		// Optimize: Only JOIN the users table for roles that actually require checking the gym_id.
+		query = query.Joins("JOIN users ON users.id = subscriptions.user_id").
+			Where("users.gym_id = ?", gymID)
+
+		// Allow admins/trainers to search for a specific user's subscriptions within their gym.
+		if userIDParam != "" {
+			query = query.Where("subscriptions.user_id = ?", userIDParam)
+		}
+
+	case "Member":
+		// Members can strictly only view their own subscriptions.
+		// Optimize/Secure: Ignore userIDParam entirely to prevent unauthorized access.
+		userIDRaw := c.Get("user_id")
+		if userIDRaw == nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "User ID missing from context"})
+		}
+		
+		// No JOIN required; directly query the user_id on the subscriptions table.
 		query = query.Where("subscriptions.user_id = ?", uint(userIDRaw.(float64)))
+
+	default:
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Invalid or unauthorized role"})
 	}
 
+	// Execute the finalized, optimized query
 	if err := query.Find(&subs).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch subscriptions"})
 	}
@@ -122,68 +155,73 @@ func GetSubscriptions(c echo.Context) error {
 }
 
 type UpdateSubscriptionRequest struct {
-	PlanID    uint       `json:"plan_id"`
-	StartDate *time.Time `json:"start_date"`
-	EndDate   *time.Time `json:"end_date"`
-	Status    string     `json:"status"`
+	PlanID    *uint       `json:"plan_id"`
+	Status    *string     `json:"status"`
 }
 
 func UpdateSubscription(c echo.Context) error {
-	id := c.Param("id")
-	var sub models.Subscription
-	if err := database.DB.First(&sub, id).Error; err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Subscription not found"})
-	}
+    id := c.Param("id")
+    role := c.Get("role").(string)
 
-	var user models.User
-	if err := database.DB.First(&user, sub.UserID).Error; err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "User not found"})
-	}
+    var sub models.Subscription
+    if err := database.DB.First(&sub, id).Error; err != nil {
+        return c.JSON(http.StatusNotFound, map[string]string{"error": "Subscription not found"})
+    }
 
-	role := c.Get("role").(string)
-	if role == "GymAdmin" {
-		gymIDRaw := c.Get("gym_id")
-		if gymIDRaw == nil || user.GymID == nil || uint(gymIDRaw.(float64)) != *user.GymID {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update subscriptions for users in your gym"})
-		}
-	}
+    var user models.User
+    if err := database.DB.First(&user, sub.UserID).Error; err != nil {
+        return c.JSON(http.StatusInternalServerError, map[string]string{"error": "User not found"})
+    }
 
-	var req UpdateSubscriptionRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
-	}
+    // Permission Checks using switch
+    switch role {
+    case "SuperAdmin":
+        // SuperAdmin can update any subscription
+    case "GymAdmin":
+        // GymAdmin can only update subscriptions for users in their gym
+        gymIDRaw := c.Get("gym_id")
+        if gymIDRaw == nil || user.GymID == nil || uint(gymIDRaw.(float64)) != *user.GymID {
+            return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. You can only update subscriptions for users in your gym"})
+        }
+    default:
+        // Other roles cannot update subscription details
+        return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
+    }
 
-	if req.PlanID != 0 {
-		var plan models.MembershipPlan
-		if err := database.DB.First(&plan, req.PlanID).Error; err != nil {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "New plan not found"})
-		}
-		if user.GymID == nil || plan.GymID != *user.GymID {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "User and new plan do not belong to the same gym"})
-		}
-		sub.PlanID = req.PlanID
-	}
-	if req.StartDate != nil {
-		sub.StartDate = *req.StartDate
-	}
-	if req.EndDate != nil {
-		sub.EndDate = *req.EndDate
-	}
-	if req.Status != "" {
-		if req.Status == "Active" && sub.Status != "Active" {
-			var existingActive models.Subscription
-			if err := database.DB.Where("user_id = ? AND status = ? AND id != ?", sub.UserID, "Active", sub.ID).First(&existingActive).Error; err == nil {
-				return c.JSON(http.StatusConflict, map[string]string{"error": "user already has an active subscription"})
-			}
-		}
-		sub.Status = req.Status
-	}
+    var req UpdateSubscriptionRequest
+    if err := c.Bind(&req); err != nil {
+        return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+    }
 
-	if err := database.DB.Save(&sub).Error; err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update subscription"})
-	}
+    // Validate PlanID if it's being updated
+    if req.PlanID != nil {
+        var plan models.MembershipPlan
+        if err := database.DB.First(&plan, *req.PlanID).Error; err != nil {
+            return c.JSON(http.StatusNotFound, map[string]string{"error": "New plan not found"})
+        }
+        if user.GymID == nil || plan.GymID != *user.GymID {
+            return c.JSON(http.StatusBadRequest, map[string]string{"error": "User and new plan do not belong to the same gym"})
+        }
+    }
 
-	return c.JSON(http.StatusOK, sub)
+    // Validate Status if it's being updated
+    if req.Status != nil {
+        if *req.Status == "Active" && sub.Status != "Active" {
+            var existingActive models.Subscription
+            if err := database.DB.Where("user_id = ? AND status = ? AND id != ?", sub.UserID, "Active", sub.ID).First(&existingActive).Error; err == nil {
+                return c.JSON(http.StatusConflict, map[string]string{"error": "User already has an active subscription"})
+            }
+        }
+    }
+
+    // Use Updates with the request struct to properly handle partial updates via pointers
+    if err := database.DB.Model(&sub).Updates(req).Error; err != nil {
+        return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update subscription"})
+    }
+
+    // Fetch the updated subscription to return the complete object
+    database.DB.First(&sub, sub.ID)
+    return c.JSON(http.StatusOK, sub)
 }
 
 func DeleteSubscription(c echo.Context) error {
