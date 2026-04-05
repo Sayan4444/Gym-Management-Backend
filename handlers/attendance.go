@@ -58,7 +58,7 @@ func GetQRToken(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "gym_id not found in token"})
 	}
 
-	gymID := gymIDRaw.(uint)
+	gymID := uint(gymIDRaw.(float64))
 
 	token, err := rotateToken(gymID)
 	if err != nil {
@@ -86,7 +86,7 @@ func ScanQRAttendance(c echo.Context) error {
 	if userIDRaw == nil {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Failed to retrieve user ID from token"})
 	}
-	userID := userIDRaw.(uint)
+	userID := uint(userIDRaw.(float64))
 
 	// Look up the user to get their gym.
 	var user models.User
@@ -149,7 +149,7 @@ func MarkManualAttendance(c echo.Context) error {
 	if gymIDRaw == nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "gym_id not found in token"})
 	}
-	adminGymID := gymIDRaw.(uint)
+	adminGymID := uint(gymIDRaw.(float64))
 
 	// Parse target user ID from URL param.
 	userIDParam := c.Param("userId")
