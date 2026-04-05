@@ -43,6 +43,8 @@ type Gym struct {
 	Slug      string         `json:"slug" gorm:"uniqueIndex"`
 	Address   string         `json:"address"`
 	Whatsapp  string         `json:"whatsapp"`
+	Email     string         `json:"email" gorm:"unique"`
+	Phone     string         `json:"phone" gorm:"unique"`
 	Users     []User         `gorm:"foreignKey:GymID"`
 }
 
@@ -106,10 +108,10 @@ type Payment struct {
 	UserID            uint           `json:"user_id" gorm:"index"`
 	Amount            float64        `json:"amount"`
 	PaymentDate       time.Time      `json:"payment_date"`
-	Status            string         `json:"status"`      // Paid, Pending, Failed
-	PaymentFor        string         `json:"payment_for"` // Membership Plan, Add-On
-	PlanID            *uint          `json:"plan_id" gorm:"index"`   // set when PaymentFor == "Membership Plan"
-	AddonID           *uint          `json:"addon_id" gorm:"index"`  // set when PaymentFor == "Add-On"
+	Status            string         `json:"status"`                // Paid, Pending, Failed
+	PaymentFor        string         `json:"payment_for"`           // Membership Plan, Add-On
+	PlanID            *uint          `json:"plan_id" gorm:"index"`  // set when PaymentFor == "Membership Plan"
+	AddonID           *uint          `json:"addon_id" gorm:"index"` // set when PaymentFor == "Add-On"
 	RazorpayOrderID   string         `json:"razorpay_order_id"`
 	RazorpayPaymentID string         `json:"razorpay_payment_id"`
 	RazorpaySignature string         `json:"razorpay_signature"`

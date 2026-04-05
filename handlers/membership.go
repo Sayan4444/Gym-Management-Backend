@@ -144,7 +144,7 @@ func GetMembershipPlansByGym(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not retrieve plans"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{"count": len(plans), "plans": plans})
+	return c.JSON(http.StatusOK, map[string]interface{}{"count": len(plans), "memberships": plans})
 }
 
 func GetMembershipPlans(c echo.Context) error {
@@ -184,7 +184,7 @@ func GetMembershipPlans(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"count": len(plans),
-		"plans": plans,
+		"count":       len(plans),
+		"memberships": plans,
 	})
 }
