@@ -90,7 +90,7 @@ func GetUsers(c echo.Context) error {
                 query = query.Preload("Subscription").Preload("Subscription.Plan")
             case "trainer":
                 query = query.Preload("Trainer")
-            case "workout_plan", "workoutplan":
+            case "workout_plan":
                 query = query.Preload("WorkoutPlans")
             }
         }

@@ -67,7 +67,7 @@ func GetQRToken(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{
 		"token":      token,
-		"expires_at": time.Now().UTC().Add(24 * time.Hour),
+		"expires_at": time.Now().UTC().Add(30 * time.Second),
 	})
 }
 
