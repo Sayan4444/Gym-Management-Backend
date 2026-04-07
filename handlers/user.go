@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"gym-saas/database"
 	"gym-saas/models"
@@ -50,6 +51,12 @@ func GetUsers(c echo.Context) error {
 		query = query.Where("id = 0") // Deny by default
 	}
 
+	// Add this block to filter by trainer_id from query params
+    trainerIDFilter := c.QueryParam("trainer_id")
+    if trainerIDFilter != "" {
+        query = query.Where("users.trainer_id = ?", trainerIDFilter)
+    }
+
 	roleFilter := c.QueryParam("role")
 	if roleFilter != "" {
 		query = query.Where("users.role = ?", roleFilter)
@@ -72,6 +79,22 @@ func GetUsers(c echo.Context) error {
 	if search := c.QueryParam("search"); search != "" {
 		query = query.Where("users.name ILIKE ? OR users.email ILIKE ? OR users.phone ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
+
+    if includeParam := c.QueryParam("include"); includeParam != "" {
+        includes := strings.SplitSeq(includeParam, ",")
+        for relation := range includes {
+            switch strings.ToLower(strings.TrimSpace(relation)) {
+            case "gym":
+                query = query.Preload("Gym")
+            case "subscription":
+                query = query.Preload("Subscription").Preload("Subscription.Plan")
+            case "trainer":
+                query = query.Preload("Trainer")
+            case "workout_plan", "workoutplan":
+                query = query.Preload("WorkoutPlans")
+            }
+        }
+    }
 
 	query = query.Order("users.created_at DESC")
 

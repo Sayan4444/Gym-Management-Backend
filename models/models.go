@@ -22,9 +22,6 @@ type User struct {
 	PhotoURL              string         `json:"photo_url"`
 	BiometricID           string         `json:"biometric_id"` // Simulated
 	Role                  string         `json:"role"`         // SuperAdmin, GymAdmin, Trainer, Member
-	GymID                 *uint          `json:"gym_id" gorm:"index"`
-	SubscriptionID        *uint          `json:"subscription_id" gorm:"index"`
-	TrainerID             *uint          `json:"trainer_id" gorm:"index"`
 	Address               string         `json:"address"`
 	EmergencyContactName  string         `json:"emergency_contact_name"`
 	EmergencyContactPhone string         `json:"emergency_contact_phone"`
@@ -32,6 +29,13 @@ type User struct {
 	Height                *float64       `json:"height"`
 	Weight                *float64       `json:"weight"`
 	MedicalConditions     string         `json:"medical_conditions"`
+	GymID                 *uint          `json:"gym_id" gorm:"index"`
+	Gym                   *Gym           `json:"gym" gorm:"foreignKey:GymID"`
+	SubscriptionID        *uint          `json:"subscription_id" gorm:"index"`
+	Subscription          *Subscription  `json:"subscription" gorm:"foreignKey:SubscriptionID"`
+	TrainerID             *uint          `json:"trainer_id" gorm:"index"`
+	Trainer               *User          `json:"trainer" gorm:"foreignKey:TrainerID"`
+	WorkoutPlans          []WorkoutPlan  `json:"workout_plans" gorm:"foreignKey:MemberID"`
 }
 
 type Gym struct {
@@ -63,6 +67,21 @@ type MembershipPlan struct {
 }
 
 // deal provided by the gym and taken by the user
+// Subcription taken by the user
+type Subscription struct {
+	ID        uint            `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time       `json:"createdAt"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt  `gorm:"index" json:"-"`
+	UserID    uint            `json:"user_id" gorm:"index"`
+	PlanID    uint            `json:"plan_id" gorm:"index"`
+	Plan      *MembershipPlan `json:"plan" gorm:"foreignKey:PlanID"`
+	StartDate time.Time       `json:"start_date"`
+	EndDate   time.Time       `json:"end_date"`
+	Status    string          `json:"status"` // Active, Expired, Paused, Upcoming
+}
+
+// deal provided by the gym and taken by the user
 // Addons available in the gym
 type Addon struct {
 	ID        uint           `gorm:"primarykey" json:"id"`
@@ -84,20 +103,6 @@ type UserAddon struct {
 	UserID      uint           `json:"user_id" gorm:"index"`
 	AddonID     uint           `json:"addon_id" gorm:"index"`
 	PurchasedAt time.Time      `json:"purchased_at"`
-}
-
-// deal provided by the gym and taken by the user
-// Subcription taken by the user
-type Subscription struct {
-	ID        uint           `gorm:"primarykey" json:"id"`
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	UserID    uint           `json:"user_id" gorm:"index"`
-	PlanID    uint           `json:"plan_id" gorm:"index"`
-	StartDate time.Time      `json:"start_date"`
-	EndDate   time.Time      `json:"end_date"`
-	Status    string         `json:"status"` // Active, Expired, Paused, Upcoming
 }
 
 type Payment struct {

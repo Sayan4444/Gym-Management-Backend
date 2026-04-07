@@ -24,9 +24,11 @@ func UserRoutes(e *echo.Echo) {
 		GET /users
 		GET /users?gym_id=5
 		GET /users?role=Trainer	
+		GET /users?trainer_id=5 - this will get all the members with that id
 		GET /users?is_premium=true - premium should be the name of the plan
 		GET /users?subscription_status= - search by subscription status
 		GET /users?search=alex - all users with name, email or phone with alex
+		GET /users?include=gym,subscription,trainer,workout_plan
 	*/
 	protected.GET("/users", handlers.GetUsers, middleware.RoleScope("SuperAdmin", "GymAdmin", "Trainer"))
 
