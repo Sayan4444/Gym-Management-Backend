@@ -242,8 +242,8 @@ func GetAttendance(c echo.Context) error {
 		query = query.Where("attendances.user_id = ?", targetUserID)
 	}
 
-	// Execute the query, ordering by the most recent clock-ins first
-	if err := query.Order("attendances.time_in DESC").Find(&records).Error; err != nil {
+	// Execute the query, ordering by the most recent date first, then by time_in
+	if err := query.Order("attendances.date DESC, attendances.time_in DESC").Find(&records).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch attendance records"})
 	}
 

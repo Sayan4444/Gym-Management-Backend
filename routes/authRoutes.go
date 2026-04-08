@@ -19,5 +19,6 @@ func AuthRoutes(e *echo.Echo) {
 	protected.Use(middleware.JWTMiddleware())
 	
 	// Auth (protected)
+	// GET /users?include=gym,subscription,trainer,workout_plan
 	protected.GET("/me", handlers.GetMe)
 }

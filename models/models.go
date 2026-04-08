@@ -33,8 +33,10 @@ type User struct {
 	Gym                   *Gym           `json:"gym" gorm:"foreignKey:GymID"`
 	SubscriptionID        *uint          `json:"subscription_id" gorm:"index"`
 	Subscription          *Subscription  `json:"subscription" gorm:"foreignKey:SubscriptionID"`
+	UserAddon             []UserAddon    `json:"user_addon" gorm:"foreignKey:UserID"`
 	TrainerID             *uint          `json:"trainer_id" gorm:"index"`
 	Trainer               *User          `json:"trainer" gorm:"foreignKey:TrainerID"`
+	Payments              []Payment      `json:"payments" gorm:"foreignKey:UserID"`
 	WorkoutPlans          []WorkoutPlan  `json:"workout_plans" gorm:"foreignKey:MemberID"`
 }
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"gym-saas/database"
@@ -100,7 +101,6 @@ func Logout(c echo.Context) error {
 // GetMe returns the currently authenticated user's data
 func GetMe(c echo.Context) error {
 	userIDRaw := c.Get("user_id")
-	c.Logger().Info("User ID: ", userIDRaw)
 	if userIDRaw == nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
@@ -108,7 +108,29 @@ func GetMe(c echo.Context) error {
 	userID := uint(userIDRaw.(float64))
 
 	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
+	query := database.DB.Model(&models.User{})
+
+	if includeParam := c.QueryParam("include"); includeParam != "" {
+		includes := strings.SplitSeq(includeParam, ",")
+		for relation := range includes {
+			switch strings.ToLower(strings.TrimSpace(relation)) {
+			case "gym":
+				query = query.Preload("Gym")
+			case "subscription":
+				query = query.Preload("Subscription").Preload("Subscription.Plan")
+			case "trainer":
+				query = query.Preload("Trainer")
+			case "workout_plans":
+				query = query.Preload("WorkoutPlans")
+			case "payments":
+				query = query.Preload("Payments")
+			case "user_addons":
+				query = query.Preload("UserAddons").Preload("UserAddons.Addon")
+			}
+		}
+	}
+
+	if err := query.First(&user, userID).Error; err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
 	}
 
