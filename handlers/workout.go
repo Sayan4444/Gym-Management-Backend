@@ -7,12 +7,18 @@ import (
 	"gym-saas/models"
 
 	"github.com/labstack/echo/v4"
+	"gorm.io/gorm"
 )
 
+// ExerciseInput is a single exercise row sent from the client.
+type ExerciseInput struct {
+	Name string `json:"name"`
+}
+
 type CreateWorkoutPlanRequest struct {
-	MemberID    uint   `json:"member_id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
+	MemberID  uint            `json:"member_id"`
+	Title     string          `json:"title"`
+	Exercises []ExerciseInput `json:"exercises"`
 }
 
 // CreateWorkoutPlan - Only the trainer assigned to the member can create a workout plan.
@@ -44,12 +50,18 @@ func CreateWorkoutPlan(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "You are not the assigned trainer for this member"})
 	}
 
+	// Build exercises slice
+	exercises := make([]models.WorkoutExercise, 0, len(req.Exercises))
+	for _, ex := range req.Exercises {
+		exercises = append(exercises, models.WorkoutExercise{Name: ex.Name})
+	}
+
 	plan := models.WorkoutPlan{
-		GymID:       gymID,
-		TrainerID:   trainerID,
-		MemberID:    req.MemberID,
-		Title:       req.Title,
-		Description: req.Description,
+		GymID:     gymID,
+		TrainerID: trainerID,
+		MemberID:  req.MemberID,
+		Title:     req.Title,
+		Exercises: exercises,
 	}
 
 	if err := database.DB.Create(&plan).Error; err != nil {
@@ -62,7 +74,7 @@ func CreateWorkoutPlan(c echo.Context) error {
 // GetWorkoutPlans - A user can see workout plans according to their role.
 func GetWorkoutPlans(c echo.Context) error {
 	var plans []models.WorkoutPlan
-	query := database.DB.Model(&models.WorkoutPlan{})
+	query := database.DB.Model(&models.WorkoutPlan{}).Preload("Exercises")
 
 	roleRaw := c.Get("role")
 	role, ok := roleRaw.(string)
@@ -98,8 +110,9 @@ func GetWorkoutPlans(c echo.Context) error {
 		}
 		query = query.Where("member_id = ?", uint(userIDRaw.(float64)))
 	}
+
 	// Apply additional optional URL query parameters (e.g., ?member_id=5&trainer_id=2)
-    // Note: These append to the role-based restrictions above, they do not bypass them.
+	// Note: These append to the role-based restrictions above, they do not bypass them.
 	if targetMemberID := c.QueryParam("member_id"); targetMemberID != "" {
 		query = query.Where("member_id = ?", targetMemberID)
 	}
@@ -118,57 +131,83 @@ func GetWorkoutPlans(c echo.Context) error {
 }
 
 type UpdateWorkoutPlanRequest struct {
-	Title       *string `json:"title"`
-	Description *string `json:"description"`
+	Title     *string         `json:"title"`
+	Exercises []ExerciseInput `json:"exercises"`
 }
 
 func UpdateWorkoutPlan(c echo.Context) error {
-    id := c.Param("id")
+	id := c.Param("id")
 
-    var plan models.WorkoutPlan
-    if err := database.DB.First(&plan, id).Error; err != nil {
-        return c.JSON(http.StatusNotFound, map[string]string{"error": "Workout plan not found"})
-    }
+	var plan models.WorkoutPlan
+	if err := database.DB.First(&plan, id).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Workout plan not found"})
+	}
 
-    role := c.Get("role").(string)
-    userIDRaw := c.Get("user_id")
-    if userIDRaw == nil {
-        return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
-    }
-    userID := uint(userIDRaw.(float64))
+	role := c.Get("role").(string)
+	userIDRaw := c.Get("user_id")
+	if userIDRaw == nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	userID := uint(userIDRaw.(float64))
 
-    // Handle role-based authorization using a switch case
-    switch role {
-    case "Trainer":
-        // Trainers can only update plans they created
-        if plan.TrainerID != userID {
-            return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update workout plans you created"})
-        }
-    case "GymAdmin":
-        gymIDRaw := c.Get("gym_id")
-        if gymIDRaw == nil {
-            return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID required"})
-        }
-        if plan.GymID != uint(gymIDRaw.(float64)) {
-            return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update workout plans within your own gym"})
-        }
-    default:
-        return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to update workout plans"})
-    }
+	// Handle role-based authorization using a switch case
+	switch role {
+	case "Trainer":
+		// Trainers can only update plans they created
+		if plan.TrainerID != userID {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update workout plans you created"})
+		}
+	case "GymAdmin":
+		gymIDRaw := c.Get("gym_id")
+		if gymIDRaw == nil {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID required"})
+		}
+		if plan.GymID != uint(gymIDRaw.(float64)) {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update workout plans within your own gym"})
+		}
+	default:
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to update workout plans"})
+	}
 
-    var req UpdateWorkoutPlanRequest
-    if err := c.Bind(&req); err != nil {
-        return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
-    }
+	var req UpdateWorkoutPlanRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+	}
 
-    if err := database.DB.Model(&plan).Updates(req).Error; err != nil {
-        return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update workout plan"})
-    }
+	// Run update + exercise replacement in a transaction
+	if err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// Update title if provided
+		if req.Title != nil {
+			if err := tx.Model(&plan).Update("title", *req.Title).Error; err != nil {
+				return err
+			}
+		}
 
-    return c.JSON(http.StatusOK, plan)
+		// Delete all existing exercises for this plan, then insert new ones
+		if err := tx.Where("workout_plan_id = ?", plan.ID).Delete(&models.WorkoutExercise{}).Error; err != nil {
+			return err
+		}
+		for _, ex := range req.Exercises {
+			exercise := models.WorkoutExercise{
+				WorkoutPlanID: plan.ID,
+				Name:          ex.Name,
+			}
+			if err := tx.Create(&exercise).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update workout plan"})
+	}
+
+	// Reload plan with exercises
+	if err := database.DB.Preload("Exercises").First(&plan, plan.ID).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not reload workout plan"})
+	}
+
+	return c.JSON(http.StatusOK, plan)
 }
-
-
 
 // DeleteWorkoutPlan - The trainer who created it, GymAdmin, or SuperAdmin can delete.
 func DeleteWorkoutPlan(c echo.Context) error {
@@ -205,6 +244,9 @@ func DeleteWorkoutPlan(c echo.Context) error {
 	default:
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to delete workout plans"})
 	}
+
+	// Delete child exercises first (soft-delete), then the plan
+	database.DB.Where("workout_plan_id = ?", plan.ID).Delete(&models.WorkoutExercise{})
 
 	if err := database.DB.Delete(&plan).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not delete workout plan"})

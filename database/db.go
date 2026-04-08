@@ -35,6 +35,7 @@ func InitDB() {
 		&models.Payment{},
 		&models.Attendance{},
 		&models.WorkoutPlan{},
+		&models.WorkoutExercise{},
 		&models.Addon{},
 		&models.UserAddon{},
 		&models.GymQRToken{},

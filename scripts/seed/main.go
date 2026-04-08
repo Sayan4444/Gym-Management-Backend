@@ -38,6 +38,7 @@ func main() {
 		&models.Payment{},
 		&models.Attendance{},
 		&models.WorkoutPlan{},
+		&models.WorkoutExercise{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to auto-migrate database: %v", err)
@@ -150,11 +151,14 @@ func main() {
 	// Seed 5 WorkoutPlans
 	for i := 1; i <= 5; i++ {
 		workoutPlan := models.WorkoutPlan{
-			GymID:       gyms[i%len(gyms)].ID,
-			TrainerID:   users[2].ID, // index 2 is Trainer
-			MemberID:    users[3].ID, // index 3 is Member
-			Title:       fmt.Sprintf("Workout Plan %d", i),
-			Description: fmt.Sprintf("Do %d pushups", i*10),
+			GymID:     gyms[i%len(gyms)].ID,
+			TrainerID: users[2].ID, // index 2 is Trainer
+			MemberID:  users[3].ID, // index 3 is Member
+			Title:     fmt.Sprintf("Workout Plan %d", i),
+			Exercises: []models.WorkoutExercise{
+				{Name: fmt.Sprintf("%d Push-ups", i*10)},
+				{Name: fmt.Sprintf("%d Squats X 3", i*5)},
+			},
 		}
 		db.Create(&workoutPlan)
 	}

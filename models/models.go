@@ -149,15 +149,25 @@ type GymQRToken struct {
 }
 
 type WorkoutPlan struct {
-	ID          uint           `gorm:"primarykey" json:"id"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
-	GymID       uint           `json:"gym_id" gorm:"index"`
-	TrainerID   uint           `json:"trainer_id" gorm:"index"`
-	MemberID    uint           `json:"member_id" gorm:"index"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
+	ID        uint              `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time         `json:"createdAt"`
+	UpdatedAt time.Time         `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt    `gorm:"index" json:"-"`
+	GymID     uint              `json:"gym_id" gorm:"index"`
+	TrainerID uint              `json:"trainer_id" gorm:"index"`
+	MemberID  uint              `json:"member_id" gorm:"index"`
+	Title     string            `json:"title"`
+	Exercises []WorkoutExercise `json:"exercises" gorm:"foreignKey:WorkoutPlanID"`
+}
+
+// WorkoutExercise is a single exercise row inside a WorkoutPlan.
+type WorkoutExercise struct {
+	ID            uint           `gorm:"primarykey" json:"id"`
+	CreatedAt     time.Time      `json:"createdAt"`
+	UpdatedAt     time.Time      `json:"updatedAt"`
+	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
+	WorkoutPlanID uint           `json:"workout_plan_id" gorm:"index"`
+	Name          string         `json:"name"`
 }
 
 func (g *Gym) BeforeCreate(tx *gorm.DB) (err error) {
