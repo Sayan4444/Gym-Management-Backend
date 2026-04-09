@@ -14,6 +14,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	razorpay "github.com/razorpay/razorpay-go"
@@ -25,7 +26,7 @@ import (
 	3. Backend sends OrderId to the frontend.
 	4. Frontend opens the Razorpay UI using the OrderId -> user makes the payment.
 	5. Razorpay frontend returns 3 IDs to your frontend: orderId, paymentId, and signature.
-		paymentId = unique id returned after successful payment 
+		paymentId = unique id returned after successful payment
 		signature = HASH("orderId | paymentId",secret)
 	6. Frontend sends these 3 IDs to your backend.
 	7. Backend uses the orderId, paymentId, and razerPaySecret to recreate the signature.

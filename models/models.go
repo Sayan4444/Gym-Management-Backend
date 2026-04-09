@@ -114,7 +114,6 @@ type Payment struct {
 	DeletedAt         gorm.DeletedAt `gorm:"index" json:"-"`
 	UserID            uint           `json:"user_id" gorm:"index"`
 	Amount            float64        `json:"amount"`
-	PaymentDate       time.Time      `json:"payment_date"`
 	Status            string         `json:"status"`                // Paid, Pending, Failed
 	PaymentFor        string         `json:"payment_for"`           // Membership Plan, Add-On
 	PlanID            *uint          `json:"plan_id" gorm:"index"`  // set when PaymentFor == "Membership Plan"

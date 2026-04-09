@@ -15,12 +15,12 @@ import (
 func GymRoutes(e *echo.Echo) {
 	api := e.Group("/api")
 	//identifier is [slug,gymId]
-	api.GET("/gym/:identifier", handlers.GetGym) 
+	api.GET("/gym/:identifier", handlers.GetGym)
 
 	// Protected Routes
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
-	
+
 	protected.POST("/gym", handlers.AddGym, middleware.RoleScope("SuperAdmin"))
 	protected.GET("/gyms", handlers.GetGyms, middleware.RoleScope("SuperAdmin"))
 	protected.PUT("/gym/:identifier", handlers.UpdateGym,middleware.RoleScope("SuperAdmin","GymAdmin"))
