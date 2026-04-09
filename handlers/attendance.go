@@ -13,6 +13,16 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+/*
+	1. The backend generates a random string token and stores it in the database with the gym id and an expiry time of 30 seconds
+	2. It then sends it to the frontend which displays it as a QR code
+	https://{frontend_url}/mark-attendance?token=token&gym=gymName
+	3. The user scans the QR code. If he unauthenticated, it stores the token and gym name in the session and performs the login
+	4. On correct login, it redirects to /mark-attendance
+	5. The /mark-attendance sends the token and gymname to the backend
+	6. The backend verifies it and if its correc, the frontned is allowed to mark the attendance
+*/
+
 // ---------------------------------------------------------------------------
 // Helper – generate a cryptographically secure random hex token
 // ---------------------------------------------------------------------------
@@ -35,8 +45,8 @@ func rotateToken(gymID uint) (string, error) {
 		return "", err
 	}
 
-	// Token is valid for 30 seconds.
-	expiresAt := time.Now().UTC().Add(30 * time.Second)
+	// Token is valid for 2mins seconds.
+	expiresAt := time.Now().UTC().Add(2 * time.Minute)
 
 	// Upsert: one row per gym.
 	// Assign ensures that if the record exists, it updates the Token and ExpiresAt fields.
