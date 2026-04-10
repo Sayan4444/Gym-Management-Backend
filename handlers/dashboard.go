@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -53,7 +54,7 @@ func GetSuperAdminDashboardStats(c echo.Context) error {
 
 	// 1. Weekly Attendance (Current Week: Monday to Sunday)
 	var weeklyAttendance []WeeklyAttendance
-	
+
 	// Determine how many days past Monday we are to find the start of the week
 	weekday := int(todayStart.Weekday())
 	if weekday == 0 {
@@ -64,12 +65,12 @@ func GetSuperAdminDashboardStats(c echo.Context) error {
 	for i := 0; i < 7; i++ {
 		dayStart := mondayStart.AddDate(0, 0, i)
 		dayEnd := dayStart.AddDate(0, 0, 1)
-		
+
 		var count int64
 		database.DB.Model(&models.Attendance{}).
 			Where("date >= ? AND date < ?", dayStart, dayEnd).
 			Count(&count)
-			
+
 		weeklyAttendance = append(weeklyAttendance, WeeklyAttendance{
 			Day:   dayStart.Format("Mon"), // Formats as "Mon", "Tue", etc.
 			Count: count,
@@ -84,17 +85,17 @@ func GetSuperAdminDashboardStats(c echo.Context) error {
 	for month := 1; month <= 12; month++ {
 		mStart := time.Date(currentYear, time.Month(month), 1, 0, 0, 0, 0, todayStart.Location())
 		mEnd := mStart.AddDate(0, 1, 0)
-		
+
 		var rev *float64
 		database.DB.Model(&models.Payment{}).
 			Where("status = ? AND created_at >= ? AND created_at < ?", "Paid", mStart, mEnd).
 			Select("sum(amount)").Scan(&rev)
-			
+
 		var val float64
 		if rev != nil {
 			val = *rev
 		}
-		
+
 		monthlyRevenue = append(monthlyRevenue, MonthlyRevenue{
 			Month:   mStart.Format("Jan"), // Formats as "Jan", "Feb", etc.
 			Revenue: val,
@@ -108,6 +109,7 @@ func GetSuperAdminDashboardStats(c echo.Context) error {
 func GetAdminDashboardStats(c echo.Context) error {
 	gymIDRaw := c.Get("gym_id")
 	if gymIDRaw == nil {
+		log.Printf("API Error (http.StatusForbidden): Gym ID not found for admin")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID not found for admin"})
 	}
 	gymID := uint(gymIDRaw.(float64))

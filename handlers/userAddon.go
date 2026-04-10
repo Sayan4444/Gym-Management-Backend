@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -19,11 +20,13 @@ type AssignUserAddonRequest struct {
 func AssignUserAddonLogic(userID uint, addonID uint) (*models.UserAddon, *models.Addon, error) {
 	var user models.User
 	if err := database.DB.First(&user, userID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return nil, nil, errors.New("User not found")
 	}
 
 	var addon models.Addon
 	if err := database.DB.First(&addon, addonID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return nil, nil, errors.New("Addon not found")
 	}
 
@@ -40,6 +43,8 @@ func AssignUserAddonLogic(userID uint, addonID uint) (*models.UserAddon, *models
 	}
 
 	if err := database.DB.Create(&userAddon).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return nil, nil, err
 	}
 
@@ -49,11 +54,13 @@ func AssignUserAddonLogic(userID uint, addonID uint) (*models.UserAddon, *models
 func AssignUserAddon(c echo.Context) error {
 	var req AssignUserAddonRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
 	var user models.User
 	if err := database.DB.First(&user, req.UserID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
 	}
 
@@ -62,6 +69,7 @@ func AssignUserAddon(c echo.Context) error {
 		if role == "GymAdmin" {
 			gymIDRaw := c.Get("gym_id")
 			if gymIDRaw == nil || user.GymID == nil || uint(gymIDRaw.(float64)) != *user.GymID {
+				log.Printf("API Error (http.StatusForbidden): You can only assign addons to users in your gym")
 				return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only assign addons to users in your gym"})
 			}
 		}
@@ -69,6 +77,7 @@ func AssignUserAddon(c echo.Context) error {
 
 	userAddon, _, err := AssignUserAddonLogic(req.UserID, req.AddonID)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
@@ -81,6 +90,7 @@ func GetUserAddons(c echo.Context) error {
 	// Extract role safely from context
 	roleRaw := c.Get("role")
 	if roleRaw == nil {
+		log.Printf("API Error (http.StatusUnauthorized): Role missing from context")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Role missing from context"})
 	}
 	role := roleRaw.(string)
@@ -102,6 +112,7 @@ func GetUserAddons(c echo.Context) error {
 		// GymAdmins and Trainers can only see addons tied to their specific gym.
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil {
+			log.Printf("API Error (http.StatusForbidden): Gym ID missing for this role")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID missing for this role"})
 		}
 		gymID := uint(gymIDRaw.(float64))
@@ -120,6 +131,7 @@ func GetUserAddons(c echo.Context) error {
 		// Optimize/Secure: Ignore userIDParam entirely to prevent unauthorized access.
 		userIDRaw := c.Get("user_id")
 		if userIDRaw == nil {
+			log.Printf("API Error (http.StatusUnauthorized): User ID missing from context")
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "User ID missing from context"})
 		}
 
@@ -127,11 +139,13 @@ func GetUserAddons(c echo.Context) error {
 		query = query.Where("user_addons.user_id = ?", uint(userIDRaw.(float64)))
 
 	default:
+		log.Printf("API Error (http.StatusForbidden): Invalid or unauthorized role")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Invalid or unauthorized role"})
 	}
 
 	// Execute the finalized, optimized query
 	if err := query.Find(&userAddons).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch user addons"})
 	}
 
@@ -143,7 +157,7 @@ func GetUserAddons(c echo.Context) error {
 
 // Struct modified to use pointers for partial updates via GORM
 type UpdateUserAddonRequest struct {
-	AddonID     *uint      `json:"addon_id"`
+	AddonID *uint `json:"addon_id"`
 }
 
 func UpdateUserAddon(c echo.Context) error {
@@ -152,11 +166,13 @@ func UpdateUserAddon(c echo.Context) error {
 
 	var userAddon models.UserAddon
 	if err := database.DB.First(&userAddon, id).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "User addon not found"})
 	}
 
 	var user models.User
 	if err := database.DB.First(&user, userAddon.UserID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "User not found"})
 	}
 
@@ -168,15 +184,18 @@ func UpdateUserAddon(c echo.Context) error {
 		// GymAdmin can only update addons for users in their gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil || user.GymID == nil || uint(gymIDRaw.(float64)) != *user.GymID {
+			log.Printf("API Error (http.StatusForbidden): Access denied. You can only update addons for users in your gym")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. You can only update addons for users in your gym"})
 		}
 	default:
 		// Other roles cannot update addon details
+		log.Printf("API Error (http.StatusForbidden): Insufficient permissions")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 	}
 
 	var req UpdateUserAddonRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
@@ -184,15 +203,18 @@ func UpdateUserAddon(c echo.Context) error {
 	if req.AddonID != nil {
 		var addon models.Addon
 		if err := database.DB.First(&addon, *req.AddonID).Error; err != nil {
+			log.Printf("Error: %v", err)
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "New addon not found"})
 		}
 		if user.GymID == nil || addon.GymID != *user.GymID {
+			log.Printf("API Error (http.StatusBadRequest): User and new addon do not belong to the same gym")
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "User and new addon do not belong to the same gym"})
 		}
 	}
 
 	// Use Updates with the request struct to properly handle partial updates via pointers
 	if err := database.DB.Model(&userAddon).Updates(req).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update user addon"})
 	}
 
@@ -205,11 +227,13 @@ func DeleteUserAddon(c echo.Context) error {
 	id := c.Param("id")
 	var userAddon models.UserAddon
 	if err := database.DB.First(&userAddon, id).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "User addon not found"})
 	}
 
 	var user models.User
 	if err := database.DB.First(&user, userAddon.UserID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "User not found"})
 	}
 
@@ -217,11 +241,14 @@ func DeleteUserAddon(c echo.Context) error {
 	if role == "GymAdmin" {
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil || user.GymID == nil || uint(gymIDRaw.(float64)) != *user.GymID {
+			log.Printf("API Error (http.StatusForbidden): You can only delete addons for users in your gym")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only delete addons for users in your gym"})
 		}
 	}
 
 	if err := database.DB.Delete(&userAddon).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete user addon"})
 	}
 

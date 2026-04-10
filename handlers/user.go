@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -52,10 +53,10 @@ func GetUsers(c echo.Context) error {
 	}
 
 	// Add this block to filter by trainer_id from query params
-    trainerIDFilter := c.QueryParam("trainer_id")
-    if trainerIDFilter != "" {
-        query = query.Where("users.trainer_id = ?", trainerIDFilter)
-    }
+	trainerIDFilter := c.QueryParam("trainer_id")
+	if trainerIDFilter != "" {
+		query = query.Where("users.trainer_id = ?", trainerIDFilter)
+	}
 
 	roleFilter := c.QueryParam("role")
 	if roleFilter != "" {
@@ -80,25 +81,27 @@ func GetUsers(c echo.Context) error {
 		query = query.Where("users.name ILIKE ? OR users.email ILIKE ? OR users.phone ILIKE ?", "%"+search+"%", "%"+search+"%", "%"+search+"%")
 	}
 
-    if includeParam := c.QueryParam("include"); includeParam != "" {
-        includes := strings.SplitSeq(includeParam, ",")
-        for relation := range includes {
-            switch strings.ToLower(strings.TrimSpace(relation)) {
-            case "gym":
-                query = query.Preload("Gym")
-            case "subscription":
-                query = query.Preload("Subscription").Preload("Subscription.Plan")
-            case "trainer":
-                query = query.Preload("Trainer")
-            case "workout_plan":
-                query = query.Preload("WorkoutPlans")
-            }
-        }
-    }
+	if includeParam := c.QueryParam("include"); includeParam != "" {
+		includes := strings.SplitSeq(includeParam, ",")
+		for relation := range includes {
+			switch strings.ToLower(strings.TrimSpace(relation)) {
+			case "gym":
+				query = query.Preload("Gym")
+			case "subscription":
+				query = query.Preload("Subscription").Preload("Subscription.Plan")
+			case "trainer":
+				query = query.Preload("Trainer")
+			case "workout_plan":
+				query = query.Preload("WorkoutPlans")
+			}
+		}
+	}
 
 	query = query.Order("users.created_at DESC")
 
 	if err := query.Find(&users).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch users"})
 	}
 
@@ -106,22 +109,23 @@ func GetUsers(c echo.Context) error {
 }
 
 type UpdateProfileRequest struct {
-	Name                  *string   `json:"name"`
-	Phone                 *string   `json:"phone"`
-	DOB                   *string   `json:"dob"`
-	Gender                *string   `json:"gender"`
-	Address               *string   `json:"address"`
-	EmergencyContactName  *string   `json:"emergency_contact_name"`
-	EmergencyContactPhone *string   `json:"emergency_contact_phone"`
-	BloodGroup            *string   `json:"blood_group"`
+	Name                  *string  `json:"name"`
+	Phone                 *string  `json:"phone"`
+	DOB                   *string  `json:"dob"`
+	Gender                *string  `json:"gender"`
+	Address               *string  `json:"address"`
+	EmergencyContactName  *string  `json:"emergency_contact_name"`
+	EmergencyContactPhone *string  `json:"emergency_contact_phone"`
+	BloodGroup            *string  `json:"blood_group"`
 	Height                *float64 `json:"height"`
 	Weight                *float64 `json:"weight"`
-	MedicalConditions     *string   `json:"medical_conditions"`
+	MedicalConditions     *string  `json:"medical_conditions"`
 }
 
 func UpdateProfile(c echo.Context) error {
 	userIDRaw := c.Get("user_id")
 	if userIDRaw == nil {
+		log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
 
@@ -131,11 +135,13 @@ func UpdateProfile(c echo.Context) error {
 	targetIDStr := c.Param("id")
 	targetID, err := strconv.ParseUint(targetIDStr, 10, 32)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
 	}
 
 	var user models.User
 	if err := database.DB.First(&user, uint(targetID)).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
 	}
 
@@ -147,23 +153,28 @@ func UpdateProfile(c echo.Context) error {
 		// GymAdmin can only update users in their gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil || user.GymID == nil || uint(gymIDRaw.(float64)) != *user.GymID {
+			log.Printf("API Error (http.StatusForbidden): Insufficient permissions")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 		}
 	default:
 		// Trainer and Member can only update themselves
 		if uint(targetID) != loggedInUserID {
+			log.Printf("API Error (http.StatusForbidden): Insufficient permissions")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 		}
 	}
 
 	var req UpdateProfileRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
 	if err := database.DB.Model(&user).Updates(req).Error; err != nil {
-        return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update profile"})
-    }
+
+		log.Printf("Error: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update profile"})
+	}
 
 	database.DB.First(&user, uint(targetID))
 	return c.JSON(http.StatusOK, user)
@@ -173,22 +184,26 @@ func DeleteProfile(c echo.Context) error {
 	targetIDStr := c.Param("id")
 	targetID, err := strconv.ParseUint(targetIDStr, 10, 32)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
 	}
 
 	var user models.User
 	if err := database.DB.First(&user, uint(targetID)).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Profile not found"})
 	}
 
 	adminRoleRaw := c.Get("role")
 	adminRole, ok := adminRoleRaw.(string)
 	if !ok {
+		log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
 
 	userIDRaw := c.Get("user_id")
 	if userIDRaw == nil {
+		log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
 	loggedInUserID := uint(userIDRaw.(float64))
@@ -197,26 +212,32 @@ func DeleteProfile(c echo.Context) error {
 	switch adminRole {
 	case "SuperAdmin":
 		if uint(targetID) == loggedInUserID {
+			log.Printf("API Error (http.StatusForbidden): SuperAdmin cannot delete their own profile")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "SuperAdmin cannot delete their own profile"})
 		}
 		// Can delete any other user
 	case "GymAdmin":
 		if uint(targetID) == loggedInUserID {
+			log.Printf("API Error (http.StatusForbidden): GymAdmin cannot delete their own profile")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "GymAdmin cannot delete their own profile"})
 		}
 		// GymAdmin can only delete users in their gym
 		adminGymIDRaw := c.Get("gym_id")
 		if adminGymIDRaw == nil || user.GymID == nil || uint(adminGymIDRaw.(float64)) != *user.GymID {
+			log.Printf("API Error (http.StatusForbidden): Insufficient permissions to delete profile in another gym")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions to delete profile in another gym"})
 		}
 	default:
 		// Trainer and Member can only delete themselves
 		if uint(targetID) != loggedInUserID {
+			log.Printf("API Error (http.StatusForbidden): Insufficient permissions")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 		}
 	}
 
 	if err := database.DB.Delete(&user).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not delete user"})
 	}
 

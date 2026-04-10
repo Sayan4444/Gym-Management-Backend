@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -30,6 +31,7 @@ import (
 func generateToken() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
+		log.Printf("Error: %v", err)
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
@@ -42,6 +44,7 @@ func generateToken() (string, error) {
 func rotateToken(gymID uint) (string, error) {
 	token, err := generateToken()
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return "", err
 	}
 
@@ -55,6 +58,8 @@ func rotateToken(gymID uint) (string, error) {
 		FirstOrCreate(&models.GymQRToken{})
 
 	if result.Error != nil {
+
+		log.Printf("Error: %v", result.Error)
 		return "", result.Error
 	}
 
@@ -72,6 +77,7 @@ func GetQRToken(c echo.Context) error {
 
 	token, err := rotateToken(gymID)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Could not generate QR token"})
 	}
 
@@ -101,6 +107,7 @@ func ScanQRAttendance(c echo.Context) error {
 	// Look up the user to get their gym.
 	var user models.User
 	if err := database.DB.First(&user, userID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch user"})
 	}
 	if user.GymID == nil {
@@ -111,6 +118,7 @@ func ScanQRAttendance(c echo.Context) error {
 	// Fetch the active token for this gym.
 	var qrToken models.GymQRToken
 	if err := database.DB.Where("gym_id = ?", gymID).First(&qrToken).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "No active QR token found for your gym"})
 	}
 
@@ -143,6 +151,7 @@ func ScanQRAttendance(c echo.Context) error {
 		Source: "QR",
 	}
 	if err := database.DB.Create(&attendance).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to record attendance"})
 	}
 
@@ -165,6 +174,7 @@ func MarkManualAttendance(c echo.Context) error {
 	userIDParam := c.Param("userId")
 	parsedID, err := strconv.ParseUint(userIDParam, 10, 64)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid userId"})
 	}
 	targetUserID := uint(parsedID)
@@ -172,6 +182,7 @@ func MarkManualAttendance(c echo.Context) error {
 	// Fetch the target user and verify they belong to the admin's gym.
 	var targetUser models.User
 	if err := database.DB.First(&targetUser, targetUserID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
 	}
 	if targetUser.GymID == nil || *targetUser.GymID != adminGymID {
@@ -194,6 +205,7 @@ func MarkManualAttendance(c echo.Context) error {
 		Source: "Manual",
 	}
 	if err := database.DB.Create(&attendance).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to record attendance"})
 	}
 
@@ -254,6 +266,7 @@ func GetAttendance(c echo.Context) error {
 
 	// Execute the query, ordering by the most recent date first, then by time_in
 	if err := query.Order("attendances.date DESC, attendances.time_in DESC").Find(&records).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch attendance records"})
 	}
 

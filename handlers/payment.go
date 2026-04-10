@@ -11,6 +11,7 @@ import (
 	"gym-saas/models"
 	"gym-saas/utils"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"os"
@@ -50,11 +51,13 @@ type VerifyPaymentRequest struct {
 func CreateOrder(c echo.Context) error {
 	var req CreateOrderRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request fields"})
 	}
 
 	userIDRaw := c.Get("user_id")
-	if userIDRaw==nil {
+	if userIDRaw == nil {
+		log.Printf("API Error (http.StatusUnauthorized): Failed to retrieve user ID from token")
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Failed to retrieve user ID from token"})
 	}
 	userID := uint(userIDRaw.(float64))
@@ -62,9 +65,11 @@ func CreateOrder(c echo.Context) error {
 	// 1. Fetch user to get their GymID
 	var user models.User
 	if err := database.DB.First(&user, userID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch user details"})
 	}
 	if user.GymID == nil {
+		log.Printf("API Error (http.StatusBadRequest): User is not associated with any gym")
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "User is not associated with any gym"})
 	}
 	gymID := *user.GymID
@@ -73,21 +78,26 @@ func CreateOrder(c echo.Context) error {
 	switch req.PaymentFor {
 	case "Membership Plan":
 		if req.PlanID == nil {
+			log.Printf("API Error (http.StatusBadRequest): plan_id is required for Membership Plan payments")
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "plan_id is required for Membership Plan payments"})
 		}
 		var plan models.MembershipPlan
 		if err := database.DB.Where("id = ? AND gym_id = ?", *req.PlanID, gymID).First(&plan).Error; err != nil {
+			log.Printf("Error: %v", err)
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Membership plan not found for your gym"})
 		}
 	case "Add-On":
 		if req.AddonID == nil {
+			log.Printf("API Error (http.StatusBadRequest): addon_id is required for Add-On payments")
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "addon_id is required for Add-On payments"})
 		}
 		var addon models.Addon
 		if err := database.DB.Where("id = ? AND gym_id = ?", *req.AddonID, gymID).First(&addon).Error; err != nil {
+			log.Printf("Error: %v", err)
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Add-on not found for your gym"})
 		}
 	default:
+		log.Printf("API Error (http.StatusBadRequest): Invalid payment_for value. Must be 'Membership Plan' or 'Add-On'")
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid payment_for value. Must be 'Membership Plan' or 'Add-On'"})
 	}
 
@@ -102,6 +112,8 @@ func CreateOrder(c echo.Context) error {
 	}
 
 	if err := database.DB.Create(&payment).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to initialize payment record"})
 	}
 
@@ -122,6 +134,7 @@ func CreateOrder(c echo.Context) error {
 	razorpayClient := razorpay.NewClient(os.Getenv("RAZORPAY_KEY_ID"), os.Getenv("RAZORPAY_KEY_SECRET"))
 	body, err := razorpayClient.Order.Create(data, nil)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		// If Razorpay fails, you might want to update the DB record status to "Failed" here
 		database.DB.Model(&payment).Update("Status", "Failed")
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to create Razorpay order", "details": err.Error()})
@@ -130,17 +143,21 @@ func CreateOrder(c echo.Context) error {
 	// 5. Safely assert the order ID type
 	orderIdInterface, ok := body["id"]
 	if !ok {
+		log.Printf("API Error (http.StatusInternalServerError): Razorpay response missing ID")
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Razorpay response missing ID"})
 	}
 
 	orderId, ok := orderIdInterface.(string)
 	if !ok {
+		log.Printf("API Error (http.StatusInternalServerError): Razorpay order ID is not a string")
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Razorpay order ID is not a string"})
 	}
 
 	// 6. Update the existing DB record with the Razorpay Order ID
 	if err := database.DB.Model(&payment).Update("RazorpayOrderID", orderId).Error; err != nil {
+		log.Printf("Error: %v", err)
 		// The order exists in Razorpay, but failed to link in your DB. Log this critically.
+		log.Printf("API Error (http.StatusInternalServerError): Order created but failed to link to database")
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Order created but failed to link to database"})
 	}
 
@@ -154,6 +171,7 @@ func CreateOrder(c echo.Context) error {
 func VerifyPayment(c echo.Context) error {
 	var req VerifyPaymentRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request fields"})
 	}
 
@@ -171,12 +189,14 @@ func VerifyPayment(c echo.Context) error {
 	providedSignatureBytes := []byte(req.RazorpaySignature)
 
 	if subtle.ConstantTimeCompare(expectedSignatureBytes, providedSignatureBytes) != 1 {
+		log.Printf("API Error (http.StatusBadRequest): Invalid payment signature")
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid payment signature"})
 	}
 
 	// 4. Fetch the payment record
 	var payment models.Payment
 	if err := database.DB.Where("razorpay_order_id = ?", req.RazorpayOrderID).First(&payment).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "Payment record not found"})
 	}
 
@@ -191,6 +211,8 @@ func VerifyPayment(c echo.Context) error {
 	payment.RazorpaySignature = req.RazorpaySignature
 
 	if err := database.DB.Save(&payment).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to update payment status"})
 	}
 
@@ -228,16 +250,19 @@ func HandleWebhook(c echo.Context) error {
 	secret := os.Getenv("RAZORPAY_WEBHOOK_SECRET")
 	if secret == "" {
 		c.Logger().Error("RAZORPAY_WEBHOOK_SECRET is not set. Aborting.")
+		log.Printf("API Error (http.StatusInternalServerError): Server misconfiguration")
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Server misconfiguration"})
 	}
 
 	signatureHeader := c.Request().Header.Get("X-Razorpay-Signature")
 	if signatureHeader == "" {
+		log.Printf("API Error (http.StatusUnauthorized): Missing signature")
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Missing signature"})
 	}
 
 	bodyBytes, err := io.ReadAll(c.Request().Body)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Failed to read body"})
 	}
 
@@ -247,12 +272,14 @@ func HandleWebhook(c echo.Context) error {
 	expectedSignature := hex.EncodeToString(h.Sum(nil))
 
 	if subtle.ConstantTimeCompare([]byte(expectedSignature), []byte(signatureHeader)) != 1 {
+		log.Printf("API Error (http.StatusUnauthorized): Invalid signature")
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Invalid signature"})
 	}
 
 	// Parse Payload
 	var payload PaymentWebhookPayload
 	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid payload"})
 	}
 
@@ -271,6 +298,8 @@ func HandleWebhook(c echo.Context) error {
 			})
 
 		if result.Error != nil {
+
+			log.Printf("Error: %v", result.Error)
 			c.Logger().Errorf("Failed to update payment status for order %s: %v", orderID, result.Error)
 			// Still return 200 so Razorpay doesn't retry, or 500 if you want a retry.
 			// Usually, logging the error and returning 500 is safer for DB failures.
@@ -330,6 +359,7 @@ func GetPayments(c echo.Context) error {
 	roleRaw := c.Get("role")
 	role, ok := roleRaw.(string)
 	if !ok {
+		log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
 	}
 
@@ -342,6 +372,7 @@ func GetPayments(c echo.Context) error {
 	case "GymAdmin":
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil {
+			log.Printf("API Error (http.StatusForbidden): Gym ID required")
 			return c.JSON(http.StatusForbidden, echo.Map{"error": "Gym ID required"})
 		}
 		query = query.Where("users.gym_id = ?", uint(gymIDRaw.(float64)))
@@ -349,6 +380,7 @@ func GetPayments(c echo.Context) error {
 		// They can only get their own payment info
 		userIDRaw := c.Get("user_id")
 		if userIDRaw == nil {
+			log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
 		}
 		query = query.Where("payments.user_id = ?", uint(userIDRaw.(float64)))
@@ -366,15 +398,17 @@ func GetPayments(c echo.Context) error {
 	}
 
 	if err := query.Order("payments.created_at DESC").Find(&payments).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to fetch payments"})
 	}
-	
+
 	// Let's create an anonymous struct to embed user name so the frontend gets it
 	type PaymentWithUser struct {
 		models.Payment
 		UserName string `json:"user_name"`
 	}
-	
+
 	var result []PaymentWithUser
 	for _, p := range payments {
 		var user models.User
@@ -387,4 +421,3 @@ func GetPayments(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{"count": len(result), "payments": result})
 }
-

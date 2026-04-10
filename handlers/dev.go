@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"gym-saas/database"
@@ -15,16 +16,19 @@ func ChangeRole(c echo.Context) error {
 		Role   string `json:"role"`
 	}
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
 	var user models.User
 	if err := database.DB.First(&user, req.UserID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
 	}
 
 	user.Role = req.Role
 	if err := database.DB.Save(&user).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update role"})
 	}
 

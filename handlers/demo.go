@@ -24,16 +24,19 @@ type DemoRequest struct {
 func SubmitDemoRequest(c echo.Context) error {
 	var req DemoRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
 	if req.FullName == "" || req.Mobile == "" {
+		log.Printf("API Error (http.StatusBadRequest): Full name and mobile are required")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Full name and mobile are required"})
 	}
 
 	// Find all super admins
 	var superAdmins []models.User
 	if err := database.DB.Where("role = ?", "SuperAdmin").Find(&superAdmins).Error; err != nil {
+		log.Printf("Error: %v", err)
 		log.Printf("Failed to query super admins: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Internal server error"})
 	}
@@ -70,6 +73,7 @@ func SubmitDemoRequest(c echo.Context) error {
 			continue
 		}
 		if err := utils.SendEmail(admin.Email, subject, body); err != nil {
+			log.Printf("Error: %v", err)
 			log.Printf("Could not email %s: %v", admin.Email, err)
 			// Log the full email for dev visibility when SMTP isn't configured
 			log.Printf("Email content for %s:\nSubject: %s\n%s", admin.Email, subject, body)

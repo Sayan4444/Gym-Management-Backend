@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ type GoogleLoginRequest struct {
 func GoogleLogin(c echo.Context) error {
 	var req GoogleLoginRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
@@ -28,6 +30,7 @@ func GoogleLogin(c echo.Context) error {
 	userInfoURL := "https://www.googleapis.com/oauth2/v3/userinfo?access_token=" + req.AccessToken
 	resp, err := http.Get(userInfoURL)
 	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Printf("API Error (http.StatusUnauthorized): Invalid Google token")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid Google token"})
 	}
 	defer resp.Body.Close()
@@ -37,17 +40,20 @@ func GoogleLogin(c echo.Context) error {
 		Name  string `json:"name"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to decode user info"})
 	}
 
 	email := userInfo.Email
 	if email == "" {
+		log.Printf("API Error (http.StatusUnauthorized): Email not found in token")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Email not found in token"})
 	}
 	name := userInfo.Name
 
 	var user models.User
 	if err := database.DB.Where("email = ?", email).First(&user).Error; err != nil {
+		log.Printf("Error: %v", err)
 		// User not found, create them as Member
 		user = models.User{
 			Email: email,
@@ -57,12 +63,14 @@ func GoogleLogin(c echo.Context) error {
 			user.Name = name
 		}
 		if err := database.DB.Create(&user).Error; err != nil {
+			log.Printf("Error: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create user"})
 		}
 	}
 
 	token, err := utils.GenerateToken(user.ID, user.Role, user.GymID)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Error generating token"})
 	}
 
@@ -102,6 +110,7 @@ func Logout(c echo.Context) error {
 func GetMe(c echo.Context) error {
 	userIDRaw := c.Get("user_id")
 	if userIDRaw == nil {
+		log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
 
@@ -131,6 +140,8 @@ func GetMe(c echo.Context) error {
 	}
 
 	if err := query.First(&user, userID).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
 	}
 

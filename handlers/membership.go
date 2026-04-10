@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
@@ -14,27 +15,31 @@ type MembershipPlanRequest struct {
 	Name           *string  `json:"name"`
 	DurationMonths *int     `json:"duration_months"`
 	Price          *float64 `json:"price"`
-	IsActive       *bool   `json:"is_active"`
+	IsActive       *bool    `json:"is_active"`
 }
 
 func CreateMembershipPlan(c echo.Context) error {
 	var req MembershipPlanRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
 	gymIDParam := c.Param("gymId")
 	gymIDFromParam, err := strconv.ParseUint(gymIDParam, 10, 32)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
 	}
 
 	gymIDRaw := c.Get("gym_id")
 	if gymIDRaw == nil || uint(gymIDRaw.(float64)) != uint(gymIDFromParam) {
+		log.Printf("API Error (http.StatusForbidden): You do not have permission to create plans for this gym")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to create plans for this gym"})
 	}
 
 	if req.Name == nil || req.DurationMonths == nil || req.Price == nil {
+		log.Printf("API Error (http.StatusBadRequest): Missing required fields")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Missing required fields"})
 	}
 
@@ -47,6 +52,8 @@ func CreateMembershipPlan(c echo.Context) error {
 	}
 
 	if err := database.DB.Create(&plan).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not create plan"})
 	}
 
@@ -59,17 +66,20 @@ func UpdateMembershipPlan(c echo.Context) error {
 
 	gymIDFromParam, err := strconv.ParseUint(gymIDParam, 10, 32)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
 	}
 
 	// 1. Fetch the existing plan first to check existence and ownership
 	var plan models.MembershipPlan
 	if err := database.DB.First(&plan, planID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
 	}
 
 	// Verify the plan actually belongs to the gym specified in the URL
 	if plan.GymID != uint(gymIDFromParam) {
+		log.Printf("API Error (http.StatusForbidden): Plan does not belong to the specified gym")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Plan does not belong to the specified gym"})
 	}
 
@@ -83,21 +93,25 @@ func UpdateMembershipPlan(c echo.Context) error {
 		// GymAdmin can only update plans belonging to their specific gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil || uint(gymIDRaw.(float64)) != plan.GymID {
+			log.Printf("API Error (http.StatusForbidden): You do not have permission to update this plan")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to update this plan"})
 		}
 	default:
 		// Trainers or Members cannot update plans
+		log.Printf("API Error (http.StatusForbidden): Insufficient permissions")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 	}
 
 	// 3. Bind the incoming JSON to our pointer-based request struct
 	var req MembershipPlanRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
 	// 4. Perform the update. GORM will only update fields that are not nil in the req struct.
 	if err := database.DB.Model(&plan).Updates(req).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update plan"})
 	}
 
@@ -112,24 +126,30 @@ func DeleteMembershipPlan(c echo.Context) error {
 
 	gymIDFromParam, err := strconv.ParseUint(gymIDParam, 10, 32)
 	if err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
 	}
 
 	var plan models.MembershipPlan
 	if err := database.DB.First(&plan, planID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
 	}
 
 	if plan.GymID != uint(gymIDFromParam) {
+		log.Printf("API Error (http.StatusForbidden): Plan does not belong to the specified gym")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Plan does not belong to the specified gym"})
 	}
 
 	gymIDRaw := c.Get("gym_id")
 	if gymIDRaw == nil || uint(gymIDRaw.(float64)) != plan.GymID {
+		log.Printf("API Error (http.StatusForbidden): You do not have permission to delete this plan")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to delete this plan"})
 	}
 
 	if err := database.DB.Delete(&plan).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not delete plan"})
 	}
 
@@ -141,6 +161,7 @@ func GetMembershipPlansByGym(c echo.Context) error {
 
 	var plans []models.MembershipPlan
 	if err := database.DB.Where("gym_id = ? AND is_active = ?", gymID, true).Find(&plans).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not retrieve plans"})
 	}
 
@@ -155,13 +176,15 @@ func GetMembershipPlans(c echo.Context) error {
 	case "SuperAdmin":
 		// SuperAdmin can fetch all plans, or filter by a specific gym using ?gym_id=123
 		gymIDStr := c.QueryParam("gym_id")
-		
+
 		if gymIDStr != "" {
 			if err := database.DB.Where("gym_id = ?", gymIDStr).Find(&plans).Error; err != nil {
+				log.Printf("Error: %v", err)
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
 			}
 		} else {
 			if err := database.DB.Find(&plans).Error; err != nil {
+				log.Printf("Error: %v", err)
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
 			}
 		}
@@ -170,16 +193,19 @@ func GetMembershipPlans(c echo.Context) error {
 		// Standard roles can only view membership plans associated with their own gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil {
+			log.Printf("API Error (http.StatusForbidden): Access denied. No gym associated with your account.")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. No gym associated with your account."})
 		}
-		
+
 		gymID := uint(gymIDRaw.(float64))
 		if err := database.DB.Where("gym_id = ?", gymID).Find(&plans).Error; err != nil {
+			log.Printf("Error: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
 		}
 
 	default:
 		// Catch-all for any unknown roles
+		log.Printf("API Error (http.StatusForbidden): Insufficient permissions")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Insufficient permissions"})
 	}
 

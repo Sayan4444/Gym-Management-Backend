@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"gym-saas/database"
@@ -25,17 +26,20 @@ type CreateWorkoutPlanRequest struct {
 func CreateWorkoutPlan(c echo.Context) error {
 	var req CreateWorkoutPlanRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
 	trainerIDRaw := c.Get("user_id")
 	if trainerIDRaw == nil {
+		log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
 	trainerID := uint(trainerIDRaw.(float64))
 
 	gymIDRaw := c.Get("gym_id")
 	if gymIDRaw == nil {
+		log.Printf("API Error (http.StatusForbidden): Missing gym_id")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Missing gym_id"})
 	}
 	gymID := uint(gymIDRaw.(float64))
@@ -43,10 +47,12 @@ func CreateWorkoutPlan(c echo.Context) error {
 	// Verify the target member exists and has this trainer assigned
 	var member models.User
 	if err := database.DB.First(&member, req.MemberID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Member not found"})
 	}
 
 	if member.TrainerID == nil || *member.TrainerID != trainerID {
+		log.Printf("API Error (http.StatusForbidden): You are not the assigned trainer for this member")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "You are not the assigned trainer for this member"})
 	}
 
@@ -65,6 +71,8 @@ func CreateWorkoutPlan(c echo.Context) error {
 	}
 
 	if err := database.DB.Create(&plan).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not create workout plan"})
 	}
 
@@ -79,6 +87,7 @@ func GetWorkoutPlans(c echo.Context) error {
 	roleRaw := c.Get("role")
 	role, ok := roleRaw.(string)
 	if !ok {
+		log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
 
@@ -92,6 +101,7 @@ func GetWorkoutPlans(c echo.Context) error {
 		// GymAdmins are strictly restricted to data within their own gym
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil {
+			log.Printf("API Error (http.StatusForbidden): Gym ID required")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID required"})
 		}
 		query = query.Where("gym_id = ?", uint(gymIDRaw.(float64)))
@@ -99,6 +109,7 @@ func GetWorkoutPlans(c echo.Context) error {
 		// Trainers can only see workout plans they have authored
 		userIDRaw := c.Get("user_id")
 		if userIDRaw == nil {
+			log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 		}
 		query = query.Where("trainer_id = ?", uint(userIDRaw.(float64)))
@@ -106,6 +117,7 @@ func GetWorkoutPlans(c echo.Context) error {
 		// Members can only see workout plans assigned to them
 		userIDRaw := c.Get("user_id")
 		if userIDRaw == nil {
+			log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 		}
 		query = query.Where("member_id = ?", uint(userIDRaw.(float64)))
@@ -121,6 +133,8 @@ func GetWorkoutPlans(c echo.Context) error {
 	}
 
 	if err := query.Order("created_at DESC").Find(&plans).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch workout plans"})
 	}
 
@@ -140,12 +154,14 @@ func UpdateWorkoutPlan(c echo.Context) error {
 
 	var plan models.WorkoutPlan
 	if err := database.DB.First(&plan, id).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Workout plan not found"})
 	}
 
 	role := c.Get("role").(string)
 	userIDRaw := c.Get("user_id")
 	if userIDRaw == nil {
+		log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
 	userID := uint(userIDRaw.(float64))
@@ -155,22 +171,27 @@ func UpdateWorkoutPlan(c echo.Context) error {
 	case "Trainer":
 		// Trainers can only update plans they created
 		if plan.TrainerID != userID {
+			log.Printf("API Error (http.StatusForbidden): You can only update workout plans you created")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update workout plans you created"})
 		}
 	case "GymAdmin":
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil {
+			log.Printf("API Error (http.StatusForbidden): Gym ID required")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID required"})
 		}
 		if plan.GymID != uint(gymIDRaw.(float64)) {
+			log.Printf("API Error (http.StatusForbidden): You can only update workout plans within your own gym")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only update workout plans within your own gym"})
 		}
 	default:
+		log.Printf("API Error (http.StatusForbidden): You do not have permission to update workout plans")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to update workout plans"})
 	}
 
 	var req UpdateWorkoutPlanRequest
 	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
@@ -179,6 +200,7 @@ func UpdateWorkoutPlan(c echo.Context) error {
 		// Update title if provided
 		if req.Title != nil {
 			if err := tx.Model(&plan).Update("title", *req.Title).Error; err != nil {
+				log.Printf("Error: %v", err)
 				return err
 			}
 		}
@@ -193,16 +215,19 @@ func UpdateWorkoutPlan(c echo.Context) error {
 				Name:          ex.Name,
 			}
 			if err := tx.Create(&exercise).Error; err != nil {
+				log.Printf("Error: %v", err)
 				return err
 			}
 		}
 		return nil
 	}); err != nil {
+		log.Printf("API Error (http.StatusInternalServerError): Could not update workout plan")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update workout plan"})
 	}
 
 	// Reload plan with exercises
 	if err := database.DB.Preload("Exercises").First(&plan, plan.ID).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not reload workout plan"})
 	}
 
@@ -215,12 +240,14 @@ func DeleteWorkoutPlan(c echo.Context) error {
 
 	var plan models.WorkoutPlan
 	if err := database.DB.First(&plan, id).Error; err != nil {
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Workout plan not found"})
 	}
 
 	role := c.Get("role").(string)
 	userIDRaw := c.Get("user_id")
 	if userIDRaw == nil {
+		log.Printf("API Error (http.StatusUnauthorized): Unauthorized")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
 	}
 	userID := uint(userIDRaw.(float64))
@@ -229,19 +256,23 @@ func DeleteWorkoutPlan(c echo.Context) error {
 	switch role {
 	case "Trainer":
 		if plan.TrainerID != userID {
+			log.Printf("API Error (http.StatusForbidden): You can only delete workout plans you created")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only delete workout plans you created"})
 		}
 	case "GymAdmin":
 		gymIDRaw := c.Get("gym_id")
 		if gymIDRaw == nil {
+			log.Printf("API Error (http.StatusForbidden): Gym ID required")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Gym ID required"})
 		}
 		if plan.GymID != uint(gymIDRaw.(float64)) {
+			log.Printf("API Error (http.StatusForbidden): You can only delete workout plans within your own gym")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "You can only delete workout plans within your own gym"})
 		}
 	case "SuperAdmin":
 		// SuperAdmin can delete any plan
 	default:
+		log.Printf("API Error (http.StatusForbidden): You do not have permission to delete workout plans")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to delete workout plans"})
 	}
 
@@ -249,6 +280,8 @@ func DeleteWorkoutPlan(c echo.Context) error {
 	database.DB.Where("workout_plan_id = ?", plan.ID).Delete(&models.WorkoutExercise{})
 
 	if err := database.DB.Delete(&plan).Error; err != nil {
+
+		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not delete workout plan"})
 	}
 
