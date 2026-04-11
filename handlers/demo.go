@@ -13,11 +13,11 @@ import (
 )
 
 type DemoRequest struct {
-	FullName      string `json:"fullName"`
+	FullName      string `json:"full_name"`
 	Mobile        string `json:"mobile"`
 	Email         string `json:"email"`
-	PreferredDate string `json:"preferredDate"`
-	PreferredTime string `json:"preferredTime"`
+	PreferredDate string `json:"preferred_date"`
+	PreferredTime string `json:"preferred_time"`
 	Notes         string `json:"notes"`
 }
 

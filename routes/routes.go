@@ -21,4 +21,5 @@ func SetupRoutes(e *echo.Echo) {
 	WorkoutPlanRoutes(e)
 	AttendanceRoutes(e)
 	DashboardRoutes(e)
+	DemoRoutes(e)
 }
