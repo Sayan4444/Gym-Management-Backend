@@ -126,7 +126,6 @@ func main() {
 		payment := models.Payment{
 			UserID:      users[i%len(users)].ID,
 			Amount:      float64(i * 100),
-			PaymentDate: time.Now(),
 			Status:      "Paid",
 		}
 		db.Create(&payment)
