@@ -50,10 +50,10 @@ jobs:
             docker stop $CONTAINER_NAME || true
 
             # 3. Remove the stopped container to free up the name
-            docker rm $CONTAINER_NAME || true
+            docker rm $CONTAINER_NAME || true 
             
             ENV_FILE_PATH="/root/.env"
-            
+
             # 4. Run the new container with the necessary environment variables
             docker run -d \
               --name $CONTAINER_NAME \
