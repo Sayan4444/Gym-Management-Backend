@@ -1,0 +1,65 @@
+name: Build and Deploy to VPS
+
+# This triggers the workflow on pushes and merges to the main branch
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Authenticate with Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Step 3: Build the Docker image and push it to Docker Hub
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.IMAGE_NAME }}
+
+      # Step 4: SSH into the VPS and execute deployment commands
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          # The script below runs directly on your VPS
+          script: |
+            # Define image name to keep the script clean
+            IMAGE_NAME="${{ secrets.IMAGE_NAME }}"
+            CONTAINER_NAME="${{ secrets.CONTAINER_NAME }}"
+
+            # 1. Pull the latest image from Docker Hub
+            docker pull $IMAGE_NAME
+
+            # 2. Stop the currently running container (ignore errors if it doesn't exist)
+            docker stop $CONTAINER_NAME || true
+
+            # 3. Remove the stopped container to free up the name
+            docker rm $CONTAINER_NAME || true
+            
+            ENV_FILE_PATH="/root/.env"
+            
+            # 4. Run the new container with the necessary environment variables
+            docker run -d \
+              --name $CONTAINER_NAME \
+              -p 8080:8080 \
+              --env-file $ENV_FILE_PATH \
+              $IMAGE_NAME
+
+            # Optional: Clean up old, unused Docker images to save disk space on the VPS
+            docker image prune -f
