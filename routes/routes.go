@@ -8,7 +8,7 @@ import (
 )
 
 func SetupRoutes(e *echo.Echo) {
-	e.GET("/health", func(c echo.Context) error {
+	e.GET("/api/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
