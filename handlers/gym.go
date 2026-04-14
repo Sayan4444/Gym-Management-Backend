@@ -3,12 +3,14 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"gym-saas/database"
 	"gym-saas/models"
 
 	"github.com/labstack/echo/v4"
+	"gorm.io/gorm"
 )
 
 func GetDashboardStats(c echo.Context) error {
@@ -88,12 +90,30 @@ func GetGyms(c echo.Context) error {
 func GetGym(c echo.Context) error {
 	gymIdentifier := c.Param("identifier")
 	var gym models.Gym
+	// Build base query with any requested preloads
+	query := database.DB.Model(&models.Gym{})
+	if includeParam := c.QueryParam("include"); includeParam != "" {
+		includes := strings.Split(includeParam, ",")
+		for _, relation := range includes {
+			switch strings.ToLower(strings.TrimSpace(relation)) {
+			case "users":
+				query = query.Preload("Users")
+			case "membership_plans":
+				query = query.Preload("MembershipPlans")
+			case "addons":
+				query = query.Preload("Addons")
+			}
+		}
+	}
 
-	// Try fetching by slug first, then by ID
-	if err := database.DB.Where("slug = ?", gymIdentifier).First(&gym).Error; err != nil {
-		log.Printf("Error: %v", err)
-		if err := database.DB.First(&gym, gymIdentifier).Error; err != nil {
-			log.Printf("Error: %v", err)
+	query1 := query.Session(&gorm.Session{})
+	query2 := query.Session(&gorm.Session{})
+	
+	// Try fetching by domain first, then by numeric ID
+	if err := query1.Where("domain = ?", gymIdentifier).First(&gym).Error; err != nil {
+		log.Printf("Error fetching by domain: %v", err)
+		if err := query2.First(&gym, gymIdentifier).Error; err != nil {
+			log.Printf("Error fetching by ID: %v", err)
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
 		}
 	}
@@ -104,6 +124,7 @@ func GetGym(c echo.Context) error {
 type GymRequest struct {
 	Name     *string `json:"name"`
 	Slug     *string `json:"slug"`
+	Domain   *string `json:"domain"`
 	Address  *string `json:"address"`
 	Whatsapp *string `json:"whatsapp"`
 }
@@ -129,8 +150,8 @@ func UpdateGym(c echo.Context) error {
 
 	var gym models.Gym
 
-	// Try fetching by slug first, then by ID
-	if err := database.DB.Where("slug = ?", gymIdentifier).First(&gym).Error; err != nil {
+	// Try fetching by domain first, then by ID
+	if err := database.DB.Where("domain = ?", gymIdentifier).First(&gym).Error; err != nil {
 		log.Printf("Error: %v", err)
 		if err := database.DB.First(&gym, gymIdentifier).Error; err != nil {
 			log.Printf("Error: %v", err)
@@ -182,8 +203,8 @@ func DeleteGym(c echo.Context) error {
 
 	var gym models.Gym
 
-	// Try fetching by slug first, then by ID
-	if err := database.DB.Where("slug = ?", gymIdentifier).First(&gym).Error; err != nil {
+	// Try fetching by domain first, then by ID
+	if err := database.DB.Where("domain = ?", gymIdentifier).First(&gym).Error; err != nil {
 		log.Printf("Error: %v", err)
 		if err := database.DB.First(&gym, gymIdentifier).Error; err != nil {
 			log.Printf("Error: %v", err)

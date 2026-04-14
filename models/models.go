@@ -41,17 +41,20 @@ type User struct {
 }
 
 type Gym struct {
-	ID        uint           `gorm:"primarykey" json:"id"`
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	Name      string         `json:"name"`
-	Slug      string         `json:"slug" gorm:"uniqueIndex"`
-	Address   string         `json:"address"`
-	Whatsapp  string         `json:"whatsapp"`
-	Email     string         `json:"email" gorm:"unique"`
-	Phone     string         `json:"phone" gorm:"unique"`
-	Users     []User         `gorm:"foreignKey:GymID"`
+	ID              uint             `gorm:"primarykey" json:"id"`
+	CreatedAt       time.Time        `json:"createdAt"`
+	UpdatedAt       time.Time        `json:"updatedAt"`
+	DeletedAt       gorm.DeletedAt   `gorm:"index" json:"-"`
+	Name            string           `json:"name"`
+	Slug            string           `json:"slug" gorm:"uniqueIndex"`
+	Domain          string           `json:"domain" gorm:"uniqueIndex"`
+	Address         string           `json:"address"`
+	Whatsapp        string           `json:"whatsapp"`
+	Email           string           `json:"email" gorm:"unique"`
+	Phone           string           `json:"phone" gorm:"unique"`
+	Users           []User           `gorm:"foreignKey:GymID" json:"users"`
+	MembershipPlans []MembershipPlan `gorm:"foreignKey:GymID" json:"membership_plans"`
+	Addons          []Addon          `gorm:"foreignKey:GymID" json:"addons"`
 }
 
 // deal provided by the gym

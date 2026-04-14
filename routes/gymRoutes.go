@@ -14,7 +14,7 @@ import (
 
 func GymRoutes(e *echo.Echo) {
 	api := e.Group("/api")
-	//identifier is [slug,gymId]
+	//identifier is [domain,gymId]
 	api.GET("/gym/:identifier", handlers.GetGym)
 
 	// Protected Routes
