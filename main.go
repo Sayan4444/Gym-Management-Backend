@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 
 	"gym-saas/database"
 	"gym-saas/jobs"
@@ -27,15 +28,17 @@ func main() {
 	e := echo.New()
 	e.Logger.SetLevel(gommonlog.INFO)
 
-	frontend_url := os.Getenv("FRONTEND_URL")
-	if frontend_url == "" {
-		frontend_url = "http://localhost:3000"
+	frontendURLs := os.Getenv("FRONTEND_URL")
+	if frontendURLs == "" {
+		frontendURLs = "http://localhost:3000"
 	}
+
+	allowedOrigins := strings.Split(frontendURLs, ",")
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:     []string{frontend_url},
+		AllowOrigins:     allowedOrigins,
 		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 		AllowCredentials: true,
 	}))
