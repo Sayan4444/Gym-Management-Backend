@@ -10,7 +10,6 @@ import (
 	"gym-saas/models"
 
 	"github.com/labstack/echo/v4"
-	"gorm.io/gorm"
 )
 
 func GetDashboardStats(c echo.Context) error {
@@ -87,8 +86,20 @@ func GetGyms(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"count": len(gyms), "gyms": gyms})
 }
 
+func GetGymIDFromDomain(c echo.Context) error {
+	domainName := c.Param("domainName")
+	var gym models.Gym
+	
+	if err := database.DB.Select("id").Where("domain = ?", domainName).First(&gym).Error; err != nil {
+		log.Printf("Error fetching gym ID by domain: %v", err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found for this domain"})
+	}
+	
+	return c.JSON(http.StatusOK, map[string]uint{"id": gym.ID})
+}
+
 func GetGym(c echo.Context) error {
-	gymIdentifier := c.Param("identifier")
+	gymID := c.Param("id")
 	var gym models.Gym
 	// Build base query with any requested preloads
 	query := database.DB.Model(&models.Gym{})
@@ -106,16 +117,9 @@ func GetGym(c echo.Context) error {
 		}
 	}
 
-	query1 := query.Session(&gorm.Session{})
-	query2 := query.Session(&gorm.Session{})
-	
-	// Try fetching by domain first, then by numeric ID
-	if err := query1.Where("domain = ?", gymIdentifier).First(&gym).Error; err != nil {
-		log.Printf("Error fetching by domain: %v", err)
-		if err := query2.First(&gym, gymIdentifier).Error; err != nil {
-			log.Printf("Error fetching by ID: %v", err)
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
-		}
+	if err := query.First(&gym, gymID).Error; err != nil {
+		log.Printf("Error fetching by ID: %v", err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
 	}
 
 	return c.JSON(http.StatusOK, gym)
@@ -145,18 +149,14 @@ func AddGym(c echo.Context) error {
 }
 
 func UpdateGym(c echo.Context) error {
-	gymIdentifier := c.Param("identifier")
+	gymID := c.Param("id")
 	role := c.Get("role").(string)
 
 	var gym models.Gym
 
-	// Try fetching by domain first, then by ID
-	if err := database.DB.Where("domain = ?", gymIdentifier).First(&gym).Error; err != nil {
-		log.Printf("Error: %v", err)
-		if err := database.DB.First(&gym, gymIdentifier).Error; err != nil {
-			log.Printf("Error: %v", err)
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
-		}
+	if err := database.DB.First(&gym, gymID).Error; err != nil {
+		log.Printf("Error fetching gym: %v", err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
 	}
 
 	// Permission Checks using switch
@@ -199,17 +199,13 @@ func UpdateGym(c echo.Context) error {
 }
 
 func DeleteGym(c echo.Context) error {
-	gymIdentifier := c.Param("identifier")
+	gymID := c.Param("id")
 
 	var gym models.Gym
 
-	// Try fetching by domain first, then by ID
-	if err := database.DB.Where("domain = ?", gymIdentifier).First(&gym).Error; err != nil {
-		log.Printf("Error: %v", err)
-		if err := database.DB.First(&gym, gymIdentifier).Error; err != nil {
-			log.Printf("Error: %v", err)
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
-		}
+	if err := database.DB.First(&gym, gymID).Error; err != nil {
+		log.Printf("Error fetching gym: %v", err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found"})
 	}
 
 	if err := database.DB.Delete(&gym).Error; err != nil {
