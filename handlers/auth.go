@@ -16,6 +16,7 @@ import (
 
 type GoogleLoginRequest struct {
 	AccessToken string `json:"access_token"`
+	GymId uint `json:"gym_id"`
 }
 
 func GoogleLogin(c echo.Context) error {
@@ -55,9 +56,11 @@ func GoogleLogin(c echo.Context) error {
 	if err := database.DB.Where("email = ?", email).First(&user).Error; err != nil {
 		log.Printf("Error: %v", err)
 		// User not found, create them as Member
+
 		user = models.User{
 			Email: email,
 			Role:  "Member",
+			GymID: &req.GymId,
 		}
 		if name != "" {
 			user.Name = name
