@@ -35,7 +35,22 @@ func main() {
 
 	allowedOrigins := strings.Split(frontendURLs, ",")
 
-	e.Use(middleware.Logger())
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus:   true,
+		LogURI:      true,
+		LogMethod:   true,
+		LogLatency:  true,
+		LogRemoteIP: true,
+		LogError:    true,
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			if v.Error == nil {
+				log.Printf("[%s] %s %s | Status: %d | Latency: %v\n", v.RemoteIP, v.Method, v.URI, v.Status, v.Latency)
+			} else {
+				log.Printf("[%s] %s %s | Status: %d | Error: %v | Latency: %v\n", v.RemoteIP, v.Method, v.URI, v.Status, v.Error, v.Latency)
+			}
+			return nil
+		},
+	}))
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:     allowedOrigins,

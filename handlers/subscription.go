@@ -33,16 +33,23 @@ func AssignSubscriptionLogic(userID uint, planID uint) (*models.Subscription, *m
 	}
 
 	if user.GymID == nil || plan.GymID != *user.GymID {
+		log.Printf("Error: %v", "User and plan do not belong to the same gym")
 		return nil, nil, errors.New("User and plan do not belong to the same gym")
 	}
 
 	var activeSub models.Subscription
-	if err := database.DB.Where("user_id = ? AND status = ?", userID, "Active").First(&activeSub).Error; err == nil {
-		return nil, nil, errors.New("user already has an active subscription")
+	hasActiveOrUpcoming := false
+	if err := database.DB.Where("user_id = ? AND status IN ?", userID, []string{"Active", "Upcoming"}).Order("end_date desc").First(&activeSub).Error; err == nil {
+		hasActiveOrUpcoming = true
 	}
 
 	startDate := time.Now()
 	status := "Active"
+
+	if hasActiveOrUpcoming {
+		startDate = activeSub.EndDate
+		status = "Upcoming"
+	}
 
 	endDate := startDate.AddDate(0, plan.DurationMonths, 0)
 
