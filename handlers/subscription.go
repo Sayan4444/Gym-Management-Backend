@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"gym-saas/database"
@@ -152,6 +153,17 @@ func GetSubscriptions(c echo.Context) error {
 	default:
 		log.Printf("API Error (http.StatusForbidden): Invalid or unauthorized role")
 		return c.JSON(http.StatusForbidden, map[string]string{"error": "Invalid or unauthorized role"})
+	}
+
+	// if it has include=plan
+	if includeParam := c.QueryParam("include"); includeParam != "" {
+		includes := strings.SplitSeq(includeParam, ",")
+		for relation := range includes {
+			switch strings.ToLower(strings.TrimSpace(relation)) {
+			case "plan":
+				query = query.Preload("Plan")
+			}
+		}
 	}
 
 	// Execute the finalized, optimized query

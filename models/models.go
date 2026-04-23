@@ -31,8 +31,7 @@ type User struct {
 	MedicalConditions     string         `json:"medical_conditions"`
 	GymID                 *uint          `json:"gym_id" gorm:"index"`
 	Gym                   *Gym           `json:"gym" gorm:"foreignKey:GymID"`
-	SubscriptionID        *uint          `json:"subscription_id" gorm:"index"`
-	Subscription          *Subscription  `json:"subscription" gorm:"foreignKey:SubscriptionID"`
+	Subscription          []Subscription `json:"subscription" gorm:"foreignKey:UserID"`
 	UserAddon             []UserAddon    `json:"user_addon" gorm:"foreignKey:UserID"`
 	TrainerID             *uint          `json:"trainer_id" gorm:"index"`
 	Trainer               *User          `json:"trainer" gorm:"foreignKey:TrainerID"`

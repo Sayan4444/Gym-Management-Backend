@@ -101,7 +101,13 @@ func CreateOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid payment_for value. Must be 'Membership Plan' or 'Add-On'"})
 	}
 
-	// 3. Create the database record FIRST to get a unique identifier
+	// 3. Validate minimum amount
+	if req.Amount < 1.00 {
+		log.Printf("API Error (http.StatusBadRequest): Amount must be at least 1 INR")
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Amount must be at least 1 INR (100 paise)"})
+	}
+
+	// 4. Create the database record FIRST to get a unique identifier
 	payment := models.Payment{
 		UserID:     userID,
 		Amount:     req.Amount,
