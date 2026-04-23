@@ -106,6 +106,7 @@ type UserAddon struct {
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 	UserID      uint           `json:"user_id" gorm:"index"`
 	AddonID     uint           `json:"addon_id" gorm:"index"`
+	Addon       *Addon         `json:"addon" gorm:"foreignKey:AddonID"`
 	PurchasedAt time.Time      `json:"purchased_at"`
 }
 

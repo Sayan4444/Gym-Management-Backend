@@ -136,8 +136,8 @@ func GetMe(c echo.Context) error {
 				query = query.Preload("WorkoutPlans")
 			case "payments":
 				query = query.Preload("Payments")
-			case "user_addons":
-				query = query.Preload("UserAddons").Preload("UserAddons.Addon")
+			case "user_addon":
+				query = query.Preload("UserAddon").Preload("UserAddon.Addon")
 			}
 		}
 	}
