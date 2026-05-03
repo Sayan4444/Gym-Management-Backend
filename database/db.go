@@ -19,13 +19,14 @@ func InitDB() {
 	password := os.Getenv("DB_PASSWORD")
 	dbname := os.Getenv("DB_NAME")
 	port := os.Getenv("DB_PORT")
+	connection_timeout := os.Getenv("DB_CONNECTION_TIMEOUT")
 	
 	sslmode := "require"
 	if os.Getenv("ENV") == "development" {
 		sslmode = "disable"
 	}
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=UTC", host, user, password, dbname, port, sslmode)
+    dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=UTC connect_timeout=%s", host, user, password, dbname, port, sslmode, connection_timeout)
 	
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
