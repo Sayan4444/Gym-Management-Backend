@@ -120,6 +120,7 @@ type UpdateProfileRequest struct {
 	Height                *float64 `json:"height"`
 	Weight                *float64 `json:"weight"`
 	MedicalConditions     *string  `json:"medical_conditions"`
+	Role                  *string  `json:"role"`
 }
 
 func UpdateProfile(c echo.Context) error {
@@ -168,6 +169,21 @@ func UpdateProfile(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+	}
+
+	if req.Role != nil && *req.Role != user.Role {
+		switch role {
+		case "SuperAdmin":
+			if *req.Role == "SuperAdmin" {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "Cannot grant SuperAdmin role"})
+			}
+		case "GymAdmin":
+			if *req.Role == "SuperAdmin" || *req.Role == "GymAdmin" {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "GymAdmin cannot grant SuperAdmin or GymAdmin role"})
+			}
+		default:
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "You do not have permission to change roles"})
+		}
 	}
 
 	if err := database.DB.Model(&user).Updates(req).Error; err != nil {
