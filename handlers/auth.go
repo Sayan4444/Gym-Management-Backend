@@ -132,7 +132,7 @@ func GetMe(c echo.Context) error {
 				query = query.Preload("Subscription").Preload("Subscription.Plan")
 			case "trainer":
 				query = query.Preload("Trainer")
-			case "	":
+			case "workout_plan":
 				query = query.Preload("WorkoutPlans")
 			case "payments":
 				query = query.Preload("Payments")
