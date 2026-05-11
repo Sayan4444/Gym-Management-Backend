@@ -6,22 +6,25 @@ import (
 	"time"
 
 	"github.com/gosimple/slug"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
 type User struct {
-	ID                    uint           `gorm:"primarykey" json:"id"`
-	CreatedAt             time.Time      `json:"createdAt"`
-	UpdatedAt             time.Time      `json:"updatedAt"`
-	DeletedAt             gorm.DeletedAt `gorm:"index" json:"-"`
-	Name                  string         `json:"name"`
-	Email                 string         `json:"email" gorm:"unique"`
-	Phone                 string         `json:"phone"`
-	DOB                   string         `json:"dob"`
-	Gender                string         `json:"gender"`
-	PhotoURL              string         `json:"photo_url"`
-	BiometricID           string         `json:"biometric_id"` // Simulated
-	Role                  string         `json:"role"`         // SuperAdmin, GymAdmin, Trainer, Member
+	ID          uint           `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time      `json:"createdAt"`
+	UpdatedAt   time.Time      `json:"updatedAt"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	Name        string         `json:"name"`
+	Email       string         `json:"email" gorm:"unique"`
+	Phone       string         `json:"phone"`
+	DOB         string         `json:"dob"`
+	Gender      string         `json:"gender"`
+	PhotoURL    string         `json:"photo_url"`
+	BiometricID string         `json:"biometric_id"` // Simulated
+	Role        string         `json:"role"`         // SuperAdmin, GymAdmin, Trainer, Member, User
+	SocialMedia pq.StringArray `json:"social_media" gorm:"type:text[]"`
+	// ["instagram", "facebook", "x"]
 	Address               string         `json:"address"`
 	EmergencyContactName  string         `json:"emergency_contact_name"`
 	EmergencyContactPhone string         `json:"emergency_contact_phone"`

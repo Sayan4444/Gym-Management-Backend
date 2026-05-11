@@ -10,6 +10,7 @@ import (
 	"gym-saas/models"
 
 	"github.com/labstack/echo/v4"
+	"github.com/lib/pq"
 )
 
 func GetUsers(c echo.Context) error {
@@ -109,18 +110,19 @@ func GetUsers(c echo.Context) error {
 }
 
 type UpdateProfileRequest struct {
-	Name                  *string  `json:"name"`
-	Phone                 *string  `json:"phone"`
-	DOB                   *string  `json:"dob"`
-	Gender                *string  `json:"gender"`
-	Address               *string  `json:"address"`
-	EmergencyContactName  *string  `json:"emergency_contact_name"`
-	EmergencyContactPhone *string  `json:"emergency_contact_phone"`
-	BloodGroup            *string  `json:"blood_group"`
-	Height                *float64 `json:"height"`
-	Weight                *float64 `json:"weight"`
-	MedicalConditions     *string  `json:"medical_conditions"`
-	Role                  *string  `json:"role"`
+	Name                  *string         `json:"name"`
+	Phone                 *string         `json:"phone"`
+	DOB                   *string         `json:"dob"`
+	Gender                *string         `json:"gender"`
+	Address               *string         `json:"address"`
+	EmergencyContactName  *string         `json:"emergency_contact_name"`
+	EmergencyContactPhone *string         `json:"emergency_contact_phone"`
+	BloodGroup            *string         `json:"blood_group"`
+	Height                *float64        `json:"height"`
+	Weight                *float64        `json:"weight"`
+	MedicalConditions     *string         `json:"medical_conditions"`
+	Role                  *string         `json:"role"`
+	SocialMedia           *pq.StringArray `json:"social_media"`
 }
 
 func UpdateProfile(c echo.Context) error {
@@ -186,7 +188,49 @@ func UpdateProfile(c echo.Context) error {
 		}
 	}
 
-	if err := database.DB.Model(&user).Updates(req).Error; err != nil {
+	if req.Name != nil {
+        user.Name = *req.Name
+    }
+    if req.Phone != nil {
+        user.Phone = *req.Phone
+    }
+    if req.SocialMedia != nil {
+        user.SocialMedia = *req.SocialMedia
+    }
+    if req.Role != nil {
+        user.Role = *req.Role
+    }
+
+	// do it for the rest
+	if req.DOB != nil {
+        user.DOB = *req.DOB
+    }
+    if req.Gender != nil {
+        user.Gender = *req.Gender
+    }
+    if req.Address != nil {
+        user.Address = *req.Address
+    }
+    if req.EmergencyContactName != nil {
+        user.EmergencyContactName = *req.EmergencyContactName
+    }
+    if req.EmergencyContactPhone != nil {
+        user.EmergencyContactPhone = *req.EmergencyContactPhone
+    }
+    if req.BloodGroup != nil {
+        user.BloodGroup = *req.BloodGroup
+    }
+    if req.Height != nil {
+        user.Height = req.Height
+    }
+    if req.Weight != nil {
+        user.Weight = req.Weight
+    }
+    if req.MedicalConditions != nil {
+        user.MedicalConditions = *req.MedicalConditions
+    }
+
+	if err := database.DB.Save(&user).Error; err != nil {
 
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update profile"})
