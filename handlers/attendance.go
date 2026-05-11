@@ -15,7 +15,7 @@ import (
 )
 
 /*
-	1. The backend generates a random string token and stores it in the database with the gym id and an expiry time of 30 seconds
+	1. The backend generates a random string token and stores it in the database with the gym id and an expiry time of 2 minutes
 	2. It then sends it to the frontend which displays it as a QR code
 	https://{frontend_url}/mark-attendance?token=token&gym=gymName
 	3. The user scans the QR code. If he unauthenticated, it stores the token and gym name in the session and performs the login
@@ -48,7 +48,7 @@ func rotateToken(gymID uint) (string, error) {
 		return "", err
 	}
 
-	// Token is valid for 2mins seconds.
+	// Token is valid for 2 minutes.
 	expiresAt := time.Now().UTC().Add(2 * time.Minute)
 
 	// Upsert: one row per gym.
@@ -83,7 +83,7 @@ func GetQRToken(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{
 		"token":      token,
-		"expires_at": time.Now().UTC().Add(30 * time.Second),
+		"expires_at": time.Now().UTC().Add(2 * time.Minute),
 	})
 }
 

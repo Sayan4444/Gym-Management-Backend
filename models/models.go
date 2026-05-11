@@ -143,7 +143,7 @@ type Attendance struct {
 }
 
 // GymQRToken holds the currently active QR token for a gym.
-// The server rotates this token every 30 seconds.
+// The server rotates this token every 2 minutes.
 // A member scans the QR code and submits the token to mark attendance.
 type GymQRToken struct {
 	ID        uint           `gorm:"primarykey" json:"id"`
