@@ -16,7 +16,7 @@ type User struct {
 	DeletedAt             gorm.DeletedAt `gorm:"index" json:"-"`
 	Name                  string         `json:"name"`
 	Email                 string         `json:"email" gorm:"unique"`
-	Phone                 string         `json:"phone" gorm:"unique"`
+	Phone                 string         `json:"phone"`
 	DOB                   string         `json:"dob"`
 	Gender                string         `json:"gender"`
 	PhotoURL              string         `json:"photo_url"`
