@@ -36,14 +36,15 @@ func GetSuperAdminDashboardStats(c echo.Context) error {
 
 	database.DB.Model(&models.User{}).Where("role = ?", "Member").Count(&stats.TotalMembers)
 
-	todayStart := time.Now().Truncate(24 * time.Hour)
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	database.DB.Model(&models.Attendance{}).Where("date >= ?", todayStart).Count(&stats.TodaysAttendance)
 
 	database.DB.Model(&models.Subscription{}).Where("status = ?", "Active").Count(&stats.ActiveMemberships)
 
-	expiringDate := todayStart.AddDate(0, 0, 7)
+	expiringDate := todayStart.AddDate(0, 0, 30)
 	database.DB.Model(&models.Subscription{}).
-		Where("status = ? AND end_date <= ?", "Active", expiringDate).
+		Where("status = ? AND end_date <= ? AND end_date >= ?", "Active", expiringDate, todayStart).
 		Count(&stats.ExpiringSoon)
 
 	var totalRevenue *float64
@@ -118,25 +119,26 @@ func GetAdminDashboardStats(c echo.Context) error {
 
 	database.DB.Model(&models.User{}).Where("role = ? AND gym_id = ?", "Member", gymID).Count(&stats.TotalMembers)
 
-	todayStart := time.Now().Truncate(24 * time.Hour)
-	database.DB.Table("attendances").
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	database.DB.Model(&models.Attendance{}).
 		Joins("JOIN users ON users.id = attendances.user_id").
 		Where("attendances.date >= ? AND users.gym_id = ?", todayStart, gymID).
 		Count(&stats.TodaysAttendance)
 
-	database.DB.Table("subscriptions").
+	database.DB.Model(&models.Subscription{}).
 		Joins("JOIN users ON users.id = subscriptions.user_id").
 		Where("subscriptions.status = ? AND users.gym_id = ?", "Active", gymID).
 		Count(&stats.ActiveMemberships)
 
-	expiringDate := todayStart.AddDate(0, 0, 7)
-	database.DB.Table("subscriptions").
+	expiringDate := todayStart.AddDate(0, 0, 30)
+	database.DB.Model(&models.Subscription{}).
 		Joins("JOIN users ON users.id = subscriptions.user_id").
-		Where("subscriptions.status = ? AND subscriptions.end_date <= ? AND users.gym_id = ?", "Active", expiringDate, gymID).
+		Where("subscriptions.status = ? AND subscriptions.end_date <= ? AND subscriptions.end_date >= ? AND users.gym_id = ?", "Active", expiringDate, todayStart, gymID).
 		Count(&stats.ExpiringSoon)
 
 	var totalRevenue *float64
-	database.DB.Table("payments").
+	database.DB.Model(&models.Payment{}).
 		Joins("JOIN users ON users.id = payments.user_id").
 		Where("payments.status = ? AND users.gym_id = ?", "Paid", gymID).
 		Select("sum(payments.amount)").Scan(&totalRevenue)
@@ -149,7 +151,7 @@ func GetAdminDashboardStats(c echo.Context) error {
 		dayStart := todayStart.AddDate(0, 0, -i)
 		dayEnd := dayStart.AddDate(0, 0, 1)
 		var count int64
-		database.DB.Table("attendances").
+		database.DB.Model(&models.Attendance{}).
 			Joins("JOIN users ON users.id = attendances.user_id").
 			Where("attendances.date >= ? AND attendances.date < ? AND users.gym_id = ?", dayStart, dayEnd, gymID).
 			Count(&count)
@@ -158,11 +160,11 @@ func GetAdminDashboardStats(c echo.Context) error {
 	stats.WeeklyAttendance = weeklyAttendance
 
 	var monthlyRevenue []MonthlyRevenue
-	for i := 2; i >= 0; i-- {
+	for i := 5; i >= 0; i-- {
 		mStart := time.Date(todayStart.Year(), todayStart.Month()-time.Month(i), 1, 0, 0, 0, 0, todayStart.Location())
 		mEnd := mStart.AddDate(0, 1, 0)
 		var rev *float64
-		database.DB.Table("payments").
+		database.DB.Model(&models.Payment{}).
 			Joins("JOIN users ON users.id = payments.user_id").
 			Where("payments.status = ? AND payments.created_at >= ? AND payments.created_at < ? AND users.gym_id = ?", "Paid", mStart, mEnd, gymID).
 			Select("sum(payments.amount)").Scan(&rev)

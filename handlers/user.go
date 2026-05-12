@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -167,6 +170,20 @@ func UpdateProfile(c echo.Context) error {
 		}
 	}
 
+	bodyBytes, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		log.Printf("Error reading body: %v", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+	// Restore the body for Bind
+	c.Request().Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &raw); err != nil {
+		log.Printf("Error unmarshaling to map: %v", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+	}
+
 	var req UpdateProfileRequest
 	if err := c.Bind(&req); err != nil {
 		log.Printf("Error: %v", err)
@@ -188,47 +205,88 @@ func UpdateProfile(c echo.Context) error {
 		}
 	}
 
-	if req.Name != nil {
-        user.Name = *req.Name
-    }
-    if req.Phone != nil {
-        user.Phone = *req.Phone
-    }
-    if req.SocialMedia != nil {
-        user.SocialMedia = *req.SocialMedia
-    }
-    if req.Role != nil {
-        user.Role = *req.Role
-    }
+	if _, ok := raw["name"]; ok {
+		if req.Name != nil {
+			user.Name = *req.Name
+		} else {
+			user.Name = ""
+		}
+	}
+	if _, ok := raw["phone"]; ok {
+		if req.Phone != nil {
+			user.Phone = *req.Phone
+		} else {
+			user.Phone = ""
+		}
+	}
+	if _, ok := raw["social_media"]; ok {
+		if req.SocialMedia != nil {
+			user.SocialMedia = *req.SocialMedia
+		} else {
+			user.SocialMedia = pq.StringArray{}
+		}
+	}
+	if _, ok := raw["role"]; ok {
+		if req.Role != nil {
+			user.Role = *req.Role
+		}
+	}
 
-	// do it for the rest
-	if req.DOB != nil {
-        user.DOB = *req.DOB
-    }
-    if req.Gender != nil {
-        user.Gender = *req.Gender
-    }
-    if req.Address != nil {
-        user.Address = *req.Address
-    }
-    if req.EmergencyContactName != nil {
-        user.EmergencyContactName = *req.EmergencyContactName
-    }
-    if req.EmergencyContactPhone != nil {
-        user.EmergencyContactPhone = *req.EmergencyContactPhone
-    }
-    if req.BloodGroup != nil {
-        user.BloodGroup = *req.BloodGroup
-    }
-    if req.Height != nil {
-        user.Height = req.Height
-    }
-    if req.Weight != nil {
-        user.Weight = req.Weight
-    }
-    if req.MedicalConditions != nil {
-        user.MedicalConditions = *req.MedicalConditions
-    }
+	if _, ok := raw["dob"]; ok {
+		if req.DOB != nil {
+			user.DOB = *req.DOB
+		} else {
+			user.DOB = ""
+		}
+	}
+	if _, ok := raw["gender"]; ok {
+		if req.Gender != nil {
+			user.Gender = *req.Gender
+		} else {
+			user.Gender = ""
+		}
+	}
+	if _, ok := raw["address"]; ok {
+		if req.Address != nil {
+			user.Address = *req.Address
+		} else {
+			user.Address = ""
+		}
+	}
+	if _, ok := raw["emergency_contact_name"]; ok {
+		if req.EmergencyContactName != nil {
+			user.EmergencyContactName = *req.EmergencyContactName
+		} else {
+			user.EmergencyContactName = ""
+		}
+	}
+	if _, ok := raw["emergency_contact_phone"]; ok {
+		if req.EmergencyContactPhone != nil {
+			user.EmergencyContactPhone = *req.EmergencyContactPhone
+		} else {
+			user.EmergencyContactPhone = ""
+		}
+	}
+	if _, ok := raw["blood_group"]; ok {
+		if req.BloodGroup != nil {
+			user.BloodGroup = *req.BloodGroup
+		} else {
+			user.BloodGroup = ""
+		}
+	}
+	if _, ok := raw["height"]; ok {
+		user.Height = req.Height
+	}
+	if _, ok := raw["weight"]; ok {
+		user.Weight = req.Weight
+	}
+	if _, ok := raw["medical_conditions"]; ok {
+		if req.MedicalConditions != nil {
+			user.MedicalConditions = *req.MedicalConditions
+		} else {
+			user.MedicalConditions = ""
+		}
+	}
 
 	if err := database.DB.Save(&user).Error; err != nil {
 
