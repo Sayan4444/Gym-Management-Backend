@@ -110,7 +110,7 @@ func GetGym(c echo.Context) error {
 			case "users":
 				query = query.Preload("Users")
 			case "membership_plans":
-				query = query.Preload("MembershipPlans")
+				query = query.Preload("MembershipPlans.PlanAddons.Addon")
 			case "addons":
 				query = query.Preload("Addons")
 			}

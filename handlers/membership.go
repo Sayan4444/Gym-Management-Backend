@@ -57,6 +57,8 @@ func CreateMembershipPlan(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not create plan"})
 	}
 
+	// Preload PlanAddons for the response
+	database.DB.Preload("PlanAddons.Addon").First(&plan, plan.ID)
 	return c.JSON(http.StatusCreated, plan)
 }
 
@@ -115,8 +117,8 @@ func UpdateMembershipPlan(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update plan"})
 	}
 
-	// Fetch the fully updated plan from the DB to return to the client
-	database.DB.First(&plan, plan.ID)
+	// Fetch the fully updated plan with PlanAddons from the DB to return to the client
+	database.DB.Preload("PlanAddons.Addon").First(&plan, plan.ID)
 	return c.JSON(http.StatusOK, plan)
 }
 
@@ -160,7 +162,7 @@ func GetMembershipPlansByGym(c echo.Context) error {
 	gymID := c.Param("gymId")
 
 	var plans []models.MembershipPlan
-	if err := database.DB.Where("gym_id = ? AND is_active = ?", gymID, true).Find(&plans).Error; err != nil {
+	if err := database.DB.Preload("PlanAddons.Addon").Where("gym_id = ? AND is_active = ?", gymID, true).Find(&plans).Error; err != nil {
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not retrieve plans"})
 	}
@@ -178,12 +180,12 @@ func GetMembershipPlans(c echo.Context) error {
 		gymIDStr := c.QueryParam("gym_id")
 
 		if gymIDStr != "" {
-			if err := database.DB.Where("gym_id = ?", gymIDStr).Find(&plans).Error; err != nil {
+			if err := database.DB.Preload("PlanAddons.Addon").Where("gym_id = ?", gymIDStr).Find(&plans).Error; err != nil {
 				log.Printf("Error: %v", err)
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
 			}
 		} else {
-			if err := database.DB.Find(&plans).Error; err != nil {
+			if err := database.DB.Preload("PlanAddons.Addon").Find(&plans).Error; err != nil {
 				log.Printf("Error: %v", err)
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
 			}
@@ -198,7 +200,7 @@ func GetMembershipPlans(c echo.Context) error {
 		}
 
 		gymID := uint(gymIDRaw.(float64))
-		if err := database.DB.Where("gym_id = ?", gymID).Find(&plans).Error; err != nil {
+		if err := database.DB.Preload("PlanAddons.Addon").Where("gym_id = ?", gymID).Find(&plans).Error; err != nil {
 			log.Printf("Error: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
 		}
@@ -213,4 +215,148 @@ func GetMembershipPlans(c echo.Context) error {
 		"count":       len(plans),
 		"memberships": plans,
 	})
+}
+
+// ---------- Plan Addon Management Handlers ----------
+
+type PlanAddonRequest struct {
+	AddonID   *uint `json:"addon_id"`
+	Frequency *int  `json:"frequency"` // total count of addon usage included in the plan (must be > 0)
+}
+
+// AddPlanAddon attaches an addon (with frequency) to a membership plan.
+func AddPlanAddon(c echo.Context) error {
+	planID := c.Param("membershipId")
+	gymIDParam := c.Param("gymId")
+
+	gymIDFromParam, err := strconv.ParseUint(gymIDParam, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
+	}
+
+	var plan models.MembershipPlan
+	if err := database.DB.First(&plan, planID).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
+	}
+	if plan.GymID != uint(gymIDFromParam) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Plan does not belong to the specified gym"})
+	}
+
+	var req PlanAddonRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+	}
+	if req.AddonID == nil || req.Frequency == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "addon_id and frequency are required"})
+	}
+	if *req.Frequency <= 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "frequency must be a positive number"})
+	}
+
+	// Verify the addon belongs to the same gym
+	var addon models.Addon
+	if err := database.DB.First(&addon, *req.AddonID).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Addon not found"})
+	}
+	if addon.GymID != uint(gymIDFromParam) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Addon does not belong to this gym"})
+	}
+
+	// Avoid duplicates
+	var existing models.PlanAddon
+	if err := database.DB.Where("plan_id = ? AND addon_id = ?", plan.ID, *req.AddonID).First(&existing).Error; err == nil {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "Addon already added to this plan"})
+	}
+
+	planAddon := models.PlanAddon{
+		PlanID:    plan.ID,
+		AddonID:   *req.AddonID,
+		Frequency: *req.Frequency,
+	}
+	if err := database.DB.Create(&planAddon).Error; err != nil {
+		log.Printf("Error: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not add addon to plan"})
+	}
+
+	database.DB.Preload("Addon").First(&planAddon, planAddon.ID)
+	return c.JSON(http.StatusCreated, planAddon)
+}
+
+// UpdatePlanAddon updates the frequency of an existing plan-addon link.
+func UpdatePlanAddon(c echo.Context) error {
+	planID := c.Param("membershipId")
+	planAddonID := c.Param("planAddonId")
+	gymIDParam := c.Param("gymId")
+
+	gymIDFromParam, err := strconv.ParseUint(gymIDParam, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
+	}
+
+	var plan models.MembershipPlan
+	if err := database.DB.First(&plan, planID).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
+	}
+	if plan.GymID != uint(gymIDFromParam) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Plan does not belong to the specified gym"})
+	}
+
+	var planAddon models.PlanAddon
+	if err := database.DB.Where("id = ? AND plan_id = ?", planAddonID, plan.ID).First(&planAddon).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan addon not found"})
+	}
+
+	var req struct {
+		Frequency *int `json:"frequency"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+	}
+	if req.Frequency == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "frequency is required"})
+	}
+	if *req.Frequency <= 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "frequency must be a positive number"})
+	}
+
+	planAddon.Frequency = *req.Frequency
+	if err := database.DB.Save(&planAddon).Error; err != nil {
+		log.Printf("Error: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update plan addon"})
+	}
+
+	database.DB.Preload("Addon").First(&planAddon, planAddon.ID)
+	return c.JSON(http.StatusOK, planAddon)
+}
+
+// RemovePlanAddon removes an addon from a membership plan.
+func RemovePlanAddon(c echo.Context) error {
+	planID := c.Param("membershipId")
+	planAddonID := c.Param("planAddonId")
+	gymIDParam := c.Param("gymId")
+
+	gymIDFromParam, err := strconv.ParseUint(gymIDParam, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Gym ID"})
+	}
+
+	var plan models.MembershipPlan
+	if err := database.DB.First(&plan, planID).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan not found"})
+	}
+	if plan.GymID != uint(gymIDFromParam) {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": "Plan does not belong to the specified gym"})
+	}
+
+	var planAddon models.PlanAddon
+	if err := database.DB.Where("id = ? AND plan_id = ?", planAddonID, plan.ID).First(&planAddon).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Plan addon not found"})
+	}
+
+	if err := database.DB.Delete(&planAddon).Error; err != nil {
+		log.Printf("Error: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not remove addon from plan"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Addon removed from plan"})
 }

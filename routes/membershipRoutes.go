@@ -9,7 +9,6 @@ import (
 
 func MembershipRoutes(e *echo.Echo) {
 	api := e.Group("/api")
-	// test them
 
 	// Public Routes
 	// View the membership plan by the gym id - public route
@@ -24,4 +23,9 @@ func MembershipRoutes(e *echo.Echo) {
 	protected.POST("/gyms/:gymId/memberships", handlers.CreateMembershipPlan, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.PUT("/gyms/:gymId/memberships/:membershipId", handlers.UpdateMembershipPlan, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.DELETE("/gyms/:gymId/memberships/:membershipId", handlers.DeleteMembershipPlan, middleware.RoleScope("SuperAdmin", "GymAdmin"))
+
+	// Plan Addon management (addons included in a plan with a frequency)
+	protected.POST("/gyms/:gymId/memberships/:membershipId/addons", handlers.AddPlanAddon, middleware.RoleScope("SuperAdmin", "GymAdmin"))
+	protected.PUT("/gyms/:gymId/memberships/:membershipId/addons/:planAddonId", handlers.UpdatePlanAddon, middleware.RoleScope("SuperAdmin", "GymAdmin"))
+	protected.DELETE("/gyms/:gymId/memberships/:membershipId/addons/:planAddonId", handlers.RemovePlanAddon, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 }

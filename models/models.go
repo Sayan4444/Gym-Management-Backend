@@ -71,6 +71,21 @@ type MembershipPlan struct {
 	Price          float64        `json:"price"`
 	DurationMonths int            `json:"duration_months"`
 	IsActive       bool           `json:"is_active" gorm:"default:true"` // is its a active plan
+	PlanAddons     []PlanAddon    `json:"plan_addons" gorm:"foreignKey:PlanID"`
+}
+
+// PlanAddon links an Addon to a MembershipPlan with a total count.
+// Frequency is an integer: the number of times the member gets this addon throughout the plan.
+// e.g., Frequency = 12 means 12 personal training sessions over the life of the plan.
+type PlanAddon struct {
+	ID        uint           `gorm:"primarykey" json:"id"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	PlanID    uint           `json:"plan_id" gorm:"index"`
+	AddonID   uint           `json:"addon_id" gorm:"index"`
+	Addon     *Addon         `json:"addon" gorm:"foreignKey:AddonID"`
+	Frequency int            `json:"frequency"` // total count of addon usage included in the plan
 }
 
 // deal provided by the gym and taken by the user
