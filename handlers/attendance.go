@@ -91,6 +91,71 @@ type ScanQRRequest struct {
 	ScannedToken string `json:"scanned_token"`
 }
 
+// ---------------------------------------------------------------------------
+// Common Attendance Helpers
+// ---------------------------------------------------------------------------
+
+func recordAttendance(c echo.Context, userID uint, source string, successMessage string) error {
+	// Prevent duplicate check-in: one attendance entry per user per calendar day.
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	var existing models.Attendance
+	if err := database.DB.Where("user_id = ? AND date = ?", userID, today).First(&existing).Error; err == nil {
+		return c.JSON(http.StatusConflict, echo.Map{"error": "Attendance already marked for today"})
+	}
+
+	// Create attendance record.
+	now := time.Now().UTC()
+	attendance := models.Attendance{
+		UserID: userID,
+		Date:   today,
+		TimeIn: now,
+		Source: source,
+	}
+	if err := database.DB.Create(&attendance).Error; err != nil {
+		log.Printf("Error: %v", err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to record attendance"})
+	}
+
+	return c.JSON(http.StatusCreated, echo.Map{
+		"message":    successMessage,
+		"attendance": attendance,
+	})
+}
+
+func getTargetUserForAdmin(c echo.Context) (uint, bool) {
+	// Resolve the admin's gym from their JWT.
+	gymIDRaw := c.Get("gym_id")
+	if gymIDRaw == nil {
+		_ = c.JSON(http.StatusBadRequest, echo.Map{"error": "gym_id not found in token"})
+		return 0, false
+	}
+	adminGymID := uint(gymIDRaw.(float64))
+
+	// Parse target user ID from URL param.
+	userIDParam := c.Param("userId")
+	parsedID, err := strconv.ParseUint(userIDParam, 10, 64)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		_ = c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid userId"})
+		return 0, false
+	}
+	targetUserID := uint(parsedID)
+
+	// Fetch the target user and verify they belong to the admin's gym.
+	var targetUser models.User
+	if err := database.DB.First(&targetUser, targetUserID).Error; err != nil {
+		log.Printf("Error: %v", err)
+		_ = c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
+		return 0, false
+	}
+	if targetUser.GymID == nil || *targetUser.GymID != adminGymID {
+		_ = c.JSON(http.StatusForbidden, echo.Map{"error": "User does not belong to your gym"})
+		return 0, false
+	}
+
+	return targetUserID, true
+}
+
 func ScanQRAttendance(c echo.Context) error {
 	var req ScanQRRequest
 	if err := c.Bind(&req); err != nil || req.ScannedToken == "" {
@@ -132,86 +197,46 @@ func ScanQRAttendance(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Invalid QR token"})
 	}
 
-	// Prevent duplicate check-in: one attendance entry per user per calendar day.
-	today := time.Now().UTC().Truncate(24 * time.Hour)
-	var existing models.Attendance
-	err := database.DB.
-		Where("user_id = ? AND date = ?", userID, today).
-		First(&existing).Error
-	if err == nil {
-		return c.JSON(http.StatusConflict, echo.Map{"error": "Attendance already marked for today"})
-	}
-
-	// Create attendance record.
-	now := time.Now().UTC()
-	attendance := models.Attendance{
-		UserID: userID,
-		Date:   today,
-		TimeIn: now,
-		Source: "QR",
-	}
-	if err := database.DB.Create(&attendance).Error; err != nil {
-		log.Printf("Error: %v", err)
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to record attendance"})
-	}
-
-	return c.JSON(http.StatusCreated, echo.Map{
-		"message":    "Attendance marked successfully",
-		"attendance": attendance,
-	})
+	return recordAttendance(c, userID, "QR", "Attendance marked successfully")
 }
 
 func MarkManualAttendance(c echo.Context) error {
-	// Resolve the admin's gym from their JWT.
-	gymIDRaw := c.Get("gym_id")
-
-	if gymIDRaw == nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "gym_id not found in token"})
-	}
-	adminGymID := uint(gymIDRaw.(float64))
-
-	// Parse target user ID from URL param.
-	userIDParam := c.Param("userId")
-	parsedID, err := strconv.ParseUint(userIDParam, 10, 64)
-	if err != nil {
-		log.Printf("Error: %v", err)
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid userId"})
-	}
-	targetUserID := uint(parsedID)
-
-	// Fetch the target user and verify they belong to the admin's gym.
-	var targetUser models.User
-	if err := database.DB.First(&targetUser, targetUserID).Error; err != nil {
-		log.Printf("Error: %v", err)
-		return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
-	}
-	if targetUser.GymID == nil || *targetUser.GymID != adminGymID {
-		return c.JSON(http.StatusForbidden, echo.Map{"error": "User does not belong to your gym"})
+	targetUserID, ok := getTargetUserForAdmin(c)
+	if !ok {
+		return nil
 	}
 
-	// Prevent duplicate check-in: one attendance entry per user per calendar day.
+	return recordAttendance(c, targetUserID, "Manual", "Attendance marked manually")
+}
+
+func MarkManualCheckout(c echo.Context) error {
+	targetUserID, ok := getTargetUserForAdmin(c)
+	if !ok {
+		return nil
+	}
+
+	// Fetch the existing attendance record for today.
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	var existing models.Attendance
-	if err := database.DB.Where("user_id = ? AND date = ?", targetUserID, today).First(&existing).Error; err == nil {
-		return c.JSON(http.StatusConflict, echo.Map{"error": "Attendance already marked for today"})
+	if err := database.DB.Where("user_id = ? AND date = ?", targetUserID, today).First(&existing).Error; err != nil {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "No check-in record found for today"})
 	}
 
-	// Create attendance record.
+	if existing.TimeOut != nil {
+		return c.JSON(http.StatusConflict, echo.Map{"error": "User has already checked out today"})
+	}
+
 	now := time.Now().UTC()
-	attendance := models.Attendance{
-		UserID: targetUserID,
-		Date:   today,
-		TimeIn: now,
-		Source: "Manual",
-	}
-	if err := database.DB.Create(&attendance).Error; err != nil {
+	existing.TimeOut = &now
+
+	if err := database.DB.Save(&existing).Error; err != nil {
 		log.Printf("Error: %v", err)
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to record attendance"})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to record checkout"})
 	}
 
-	return c.JSON(http.StatusCreated, echo.Map{
-		"message":    "Attendance marked manually",
-		"attendance": attendance,
+	return c.JSON(http.StatusOK, echo.Map{
+		"message":    "Checkout marked manually",
+		"attendance": existing,
 	})
 }
 

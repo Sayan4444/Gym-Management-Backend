@@ -28,5 +28,6 @@ func AttendanceRoutes(e *echo.Echo) {
 		protected.POST("/qr/scan", handlers.ScanQRAttendance, middleware.RoleScope("Member", "Trainer"))
 	}
 	protected.POST("/:userId", handlers.MarkManualAttendance, middleware.RoleScope("GymAdmin"))
+	protected.POST("/:userId/checkout", handlers.MarkManualCheckout, middleware.RoleScope("GymAdmin"))
 	protected.GET("", handlers.GetAttendance)
 }
