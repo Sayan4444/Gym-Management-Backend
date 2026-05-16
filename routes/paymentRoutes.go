@@ -12,6 +12,7 @@ func PaymentRoutes(e *echo.Echo) {
 
 	paymentGroup.POST("/create-order", handlers.CreateOrder, middleware.JWTMiddleware(), middleware.RoleScope("Member"))
 	paymentGroup.POST("/verify", handlers.VerifyPayment)
+	paymentGroup.POST("/fail", handlers.FailPayment, middleware.JWTMiddleware(), middleware.RoleScope("Member"))
 	paymentGroup.POST("/webhook", handlers.HandleWebhook)
 	paymentGroup.GET("", handlers.GetPayments, middleware.JWTMiddleware())
 }

@@ -238,6 +238,43 @@ func VerifyPayment(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"message": "Payment verified successfully", "payment": payment})
 }
 
+type FailPaymentRequest struct {
+	RazorpayOrderID string `json:"razorpay_order_id"`
+}
+
+func FailPayment(c echo.Context) error {
+	var req FailPaymentRequest
+	if err := c.Bind(&req); err != nil {
+		log.Printf("Error: %v", err)
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request fields"})
+	}
+
+	userIDRaw := c.Get("user_id")
+	if userIDRaw == nil {
+		log.Printf("API Error (http.StatusUnauthorized): Failed to retrieve user ID from token")
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Failed to retrieve user ID from token"})
+	}
+	userID := uint(userIDRaw.(float64))
+
+	var payment models.Payment
+	if err := database.DB.Where("razorpay_order_id = ? AND user_id = ?", req.RazorpayOrderID, userID).First(&payment).Error; err != nil {
+		log.Printf("Error: %v", err)
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "Payment record not found"})
+	}
+
+	if payment.Status == "Paid" {
+		return c.JSON(http.StatusOK, echo.Map{"message": "Payment already verified, cannot mark as failed"})
+	}
+
+	payment.Status = "Failed"
+	if err := database.DB.Save(&payment).Error; err != nil {
+		log.Printf("Error: %v", err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to update payment status"})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"message": "Payment marked as failed", "payment": payment})
+}
+
 type PaymentWebhookPayload struct {
 	Event   string `json:"event"`
 	Payload struct {
