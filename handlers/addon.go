@@ -15,6 +15,7 @@ type AddonRequest struct {
 	Name     *string  `json:"name"`
 	Price    *float64 `json:"price"`
 	IsActive *bool    `json:"is_active"`
+	Duration *int     `json:"duration"` // duration in minutes (0 = not set)
 }
 
 func CreateAddon(c echo.Context) error {
@@ -47,6 +48,10 @@ func CreateAddon(c echo.Context) error {
 		Name:     *req.Name,
 		Price:    *req.Price,
 		IsActive: true, // Defaulting to true as done in membership plan creation
+	}
+
+	if req.Duration != nil {
+		addon.Duration = *req.Duration
 	}
 
 	if err := database.DB.Create(&addon).Error; err != nil {

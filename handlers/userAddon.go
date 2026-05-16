@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -155,9 +156,13 @@ func GetUserAddons(c echo.Context) error {
 	})
 }
 
-// Struct modified to use pointers for partial updates via GORM
+// UpdateUserAddonRequest allows the frontend to schedule a UserAddon separately.
+// ScheduledAt uses json.RawMessage so we can distinguish "not sent" from
+// "sent as null" (which clears a previously set schedule).
 type UpdateUserAddonRequest struct {
-	AddonID *uint `json:"addon_id"`
+	AddonID     *uint            `json:"addon_id"`
+	ScheduledAt json.RawMessage  `json:"scheduled_at"` // "null", ISO timestamp, or absent
+	Duration    *int             `json:"duration"`     // override duration in minutes
 }
 
 func UpdateUserAddon(c echo.Context) error {
@@ -212,14 +217,44 @@ func UpdateUserAddon(c echo.Context) error {
 		}
 	}
 
-	// Use Updates with the request struct to properly handle partial updates via pointers
-	if err := database.DB.Model(&userAddon).Updates(req).Error; err != nil {
+	// Build an explicit update map so that nil pointer values (e.g. clearing
+	// ScheduledAt) are correctly written to the DB rather than being skipped
+	// by GORM's zero-value filtering.
+	updates := map[string]interface{}{}
+	if req.AddonID != nil {
+		updates["addon_id"] = *req.AddonID
+	}
+	if req.Duration != nil {
+		updates["duration"] = *req.Duration
+	}
+	// ScheduledAt: only touch the column when the key was actually present in the JSON.
+	// json.RawMessage is nil/empty when the key was absent entirely.
+	if len(req.ScheduledAt) > 0 {
+		if string(req.ScheduledAt) == "null" {
+			// Explicitly clear the schedule
+			updates["scheduled_at"] = nil
+		} else {
+			var t time.Time
+			if err := json.Unmarshal(req.ScheduledAt, &t); err != nil {
+				log.Printf("Error parsing scheduled_at: %v", err)
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid scheduled_at format, expected ISO 8601"})
+			}
+			updates["scheduled_at"] = t
+		}
+	}
+
+	if len(updates) == 0 {
+		database.DB.Preload("Addon").First(&userAddon, userAddon.ID)
+		return c.JSON(http.StatusOK, userAddon)
+	}
+
+	if err := database.DB.Model(&userAddon).Updates(updates).Error; err != nil {
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update user addon"})
 	}
 
 	// Fetch the updated user addon to return the complete object
-	database.DB.First(&userAddon, userAddon.ID)
+	database.DB.Preload("Addon").First(&userAddon, userAddon.ID)
 	return c.JSON(http.StatusOK, userAddon)
 }
 

@@ -114,18 +114,20 @@ type Addon struct {
 	Name      string         `json:"name"`
 	Price     float64        `json:"price"`
 	IsActive  bool           `json:"is_active" gorm:"default:true"`
+	Duration  int            `json:"duration"` // duration in minutes (0 = not set)
 }
 
 // UserAddon represents an addon purchased by a user
 type UserAddon struct {
-	ID          uint           `gorm:"primarykey" json:"id"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
-	UserID      uint           `json:"user_id" gorm:"index"`
-	AddonID     uint           `json:"addon_id" gorm:"index"`
-	Addon       *Addon         `json:"addon" gorm:"foreignKey:AddonID"`
-	PurchasedAt time.Time      `json:"purchased_at"`
+	ID           uint           `gorm:"primarykey" json:"id"`
+	CreatedAt    time.Time      `json:"createdAt"`
+	UpdatedAt    time.Time      `json:"updatedAt"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
+	UserID       uint           `json:"user_id" gorm:"index"`
+	AddonID      uint           `json:"addon_id" gorm:"index"`
+	Addon        *Addon         `json:"addon" gorm:"foreignKey:AddonID"`
+	PurchasedAt  time.Time      `json:"purchased_at"`
+	ScheduledAt  *time.Time     `json:"scheduled_at,omitempty"` // optional scheduled date and time
 }
 
 type Payment struct {
