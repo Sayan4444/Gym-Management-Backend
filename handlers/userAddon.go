@@ -192,6 +192,13 @@ func UpdateUserAddon(c echo.Context) error {
 			log.Printf("API Error (http.StatusForbidden): Access denied. You can only update addons for users in your gym")
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. You can only update addons for users in your gym"})
 		}
+	case "Member":
+		// Members can only update their own addons (scheduling only)
+		userIDRaw := c.Get("user_id")
+		if userIDRaw == nil || uint(userIDRaw.(float64)) != userAddon.UserID {
+			log.Printf("API Error (http.StatusForbidden): Access denied. You can only update your own addons")
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "Access denied. You can only update your own addons"})
+		}
 	default:
 		// Other roles cannot update addon details
 		log.Printf("API Error (http.StatusForbidden): Insufficient permissions")
@@ -202,6 +209,12 @@ func UpdateUserAddon(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	// Members may only set ScheduledAt — block changes to AddonID or Duration
+	if role == "Member" {
+		req.AddonID = nil
+		req.Duration = nil
 	}
 
 	// Validate AddonID if it's being updated
