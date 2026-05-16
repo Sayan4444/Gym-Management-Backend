@@ -39,16 +39,18 @@ func AssignSubscriptionLogic(userID uint, planID uint) (*models.Subscription, *m
 
 	var activeSub models.Subscription
 	hasActiveOrUpcoming := false
-	if err := database.DB.Where("user_id = ? AND status IN ?", userID, []string{"Active", "Upcoming"}).Order("end_date desc").First(&activeSub).Error; err == nil {
+	// Find subscriptions not manually overridden (Paused/Cancelled) where end_date is still in the future
+	if err := database.DB.Where(
+		"user_id = ? AND (status NOT IN (?) OR status = '') AND end_date > ?",
+		userID, []string{"Paused", "Cancelled"}, time.Now(),
+	).Order("end_date desc").First(&activeSub).Error; err == nil {
 		hasActiveOrUpcoming = true
 	}
 
 	startDate := time.Now()
-	status := "Active"
 
 	if hasActiveOrUpcoming {
 		startDate = activeSub.EndDate
-		status = "Upcoming"
 	}
 
 	endDate := startDate.AddDate(0, plan.DurationMonths, 0)
@@ -58,7 +60,7 @@ func AssignSubscriptionLogic(userID uint, planID uint) (*models.Subscription, *m
 		PlanID:    plan.ID,
 		StartDate: startDate,
 		EndDate:   endDate,
-		Status:    status,
+		// Status is intentionally left empty — CurrentStatus() computes it from dates
 	}
 
 	if err := database.DB.Create(&sub).Error; err != nil {
@@ -242,14 +244,12 @@ func UpdateSubscription(c echo.Context) error {
 		}
 	}
 
-	// Validate Status if it's being updated
+	// Validate Status if it's being updated — only allow manual overrides
 	if req.Status != nil {
-		if *req.Status == "Active" && sub.Status != "Active" {
-			var existingActive models.Subscription
-			if err := database.DB.Where("user_id = ? AND status = ? AND id != ?", sub.UserID, "Active", sub.ID).First(&existingActive).Error; err == nil {
-				log.Printf("API Error (http.StatusConflict): User already has an active subscription")
-				return c.JSON(http.StatusConflict, map[string]string{"error": "User already has an active subscription"})
-			}
+		allowed := map[string]bool{"Paused": true, "Cancelled": true, "": true}
+		if !allowed[*req.Status] {
+			log.Printf("API Error (http.StatusBadRequest): Status can only be set to Paused, Cancelled, or empty")
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Status can only be set to Paused, Cancelled, or cleared (empty string)"})
 		}
 	}
 

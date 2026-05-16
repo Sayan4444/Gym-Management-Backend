@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -88,8 +89,9 @@ type PlanAddon struct {
 	Frequency int            `json:"frequency"` // total count of addon usage included in the plan
 }
 
-// deal provided by the gym and taken by the user
-// Subcription taken by the user
+// Subscription taken by the user.
+// Status field stores only manual overrides: "Paused", "Cancelled".
+// Time-based states (Active, Expired, Upcoming) are computed dynamically via CurrentStatus().
 type Subscription struct {
 	ID        uint            `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time       `json:"createdAt"`
@@ -100,7 +102,42 @@ type Subscription struct {
 	Plan      *MembershipPlan `json:"plan" gorm:"foreignKey:PlanID"`
 	StartDate time.Time       `json:"start_date"`
 	EndDate   time.Time       `json:"end_date"`
-	Status    string          `json:"status"` // Active, Expired, Paused, Upcoming
+	Status    string          `json:"status" gorm:"default:''"` // Manual overrides only: "Paused", "Cancelled"
+}
+
+// CurrentStatus dynamically calculates the true status of the subscription.
+// Manual overrides (Paused, Cancelled) take priority over time-based calculation.
+func (s *Subscription) CurrentStatus() string {
+	// 1. Check for manual overrides first
+	if s.Status == "Paused" || s.Status == "Cancelled" {
+		return s.Status
+	}
+
+	// 2. Calculate time-based status
+	now := time.Now()
+
+	if now.Before(s.StartDate) {
+		return "Upcoming"
+	}
+
+	if now.After(s.EndDate) {
+		return "Expired"
+	}
+
+	return "Active"
+}
+
+// MarshalJSON overrides the default JSON marshalling so that the API always
+// returns the dynamically computed status instead of the raw DB field.
+func (s Subscription) MarshalJSON() ([]byte, error) {
+	type Alias Subscription
+	return json.Marshal(&struct {
+		Alias
+		Status string `json:"status"`
+	}{
+		Alias:  Alias(s),
+		Status: s.CurrentStatus(),
+	})
 }
 
 // deal provided by the gym and taken by the user
@@ -117,17 +154,68 @@ type Addon struct {
 	Duration  int            `json:"duration"` // duration in minutes (0 = not set)
 }
 
-// UserAddon represents an addon purchased by a user
+// UserAddon represents an addon purchased by a user.
+// Status is computed dynamically from ScheduledAt and Addon.Duration.
 type UserAddon struct {
-	ID           uint           `gorm:"primarykey" json:"id"`
-	CreatedAt    time.Time      `json:"createdAt"`
-	UpdatedAt    time.Time      `json:"updatedAt"`
-	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
-	UserID       uint           `json:"user_id" gorm:"index"`
-	AddonID      uint           `json:"addon_id" gorm:"index"`
-	Addon        *Addon         `json:"addon" gorm:"foreignKey:AddonID"`
-	PurchasedAt  time.Time      `json:"purchased_at"`
-	ScheduledAt  *time.Time     `json:"scheduled_at,omitempty"` // optional scheduled date and time
+	ID          uint           `gorm:"primarykey" json:"id"`
+	CreatedAt   time.Time      `json:"createdAt"`
+	UpdatedAt   time.Time      `json:"updatedAt"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	UserID      uint           `json:"user_id" gorm:"index"`
+	AddonID     uint           `json:"addon_id" gorm:"index"`
+	Addon       *Addon         `json:"addon" gorm:"foreignKey:AddonID"`
+	PurchasedAt time.Time      `json:"purchased_at"`
+	ScheduledAt *time.Time     `json:"scheduled_at,omitempty"` // optional scheduled date and time
+}
+
+// CurrentStatus dynamically calculates the status of a user addon session.
+//   - "Purchased"   — no schedule set yet
+//   - "Scheduled"   — session is in the future
+//   - "In Progress" — session is happening right now
+//   - "Completed"   — session has ended (ScheduledAt + Duration has passed)
+func (ua *UserAddon) CurrentStatus() string {
+	if ua.ScheduledAt == nil {
+		return "Purchased"
+	}
+
+	now := time.Now()
+	start := *ua.ScheduledAt
+
+	// Determine session duration from the related Addon (0 if not loaded or not set)
+	durationMinutes := 0
+	if ua.Addon != nil && ua.Addon.Duration > 0 {
+		durationMinutes = ua.Addon.Duration
+	}
+
+	end := start.Add(time.Duration(durationMinutes) * time.Minute)
+
+	if now.Before(start) {
+		return "Scheduled"
+	}
+
+	if durationMinutes > 0 && now.Before(end) {
+		return "In Progress"
+	}
+
+	// If duration is 0 and we're past the start time, or if we're past end, it's completed
+	if now.After(start) {
+		return "Completed"
+	}
+
+	return "Scheduled"
+}
+
+// MarshalJSON overrides the default JSON marshalling so that the API always
+// returns the dynamically computed status.
+func (ua UserAddon) MarshalJSON() ([]byte, error) {
+	type Alias UserAddon
+	return json.Marshal(&struct {
+		Alias
+		Status string `json:"status"`
+	}{
+		Alias:  Alias(ua),
+		Status: ua.CurrentStatus(),
+	})
 }
 
 type Payment struct {

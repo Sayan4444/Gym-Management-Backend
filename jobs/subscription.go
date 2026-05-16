@@ -20,9 +20,9 @@ func StartSubscriptionCron() {
 	// Schedule the job to run every day at midnight.
 	// We use the "@daily" descriptor which is eq to "0 0 * * *"
 	_, err := c.AddFunc("@daily", func() {
-		log.Println("[CRON] Running daily subscription check")
-		processExpiredSubscriptions()
-		processExpiringSoonSubscriptions()
+		log.Println("[CRON] Running daily subscription notifications")
+		notifyExpiredSubscriptions()
+		notifyExpiringSoonSubscriptions()
 	})
 
 	if err != nil {
@@ -33,12 +33,21 @@ func StartSubscriptionCron() {
 	log.Println("[CRON] Subscription jobs scheduled successfully")
 }
 
-func processExpiredSubscriptions() {
+// notifyExpiredSubscriptions sends email notifications for subscriptions that
+// expired within the last 24 hours. No status mutation is needed because
+// CurrentStatus() dynamically computes "Expired" from the EndDate.
+func notifyExpiredSubscriptions() {
 	var expiredSubs []models.Subscription
 
-	// Find subscriptions where end_date has passed and status is still 'Active'
-	if err := database.DB.Where("status = ? AND end_date < ?", "Active", time.Now()).Find(&expiredSubs).Error; err != nil {
-		log.Printf("[CRON ERROR] Failed to fetch expired subscriptions: %v\n", err)
+	now := time.Now()
+	yesterday := now.AddDate(0, 0, -1)
+
+	// Find subscriptions that ended in the last 24 hours and are not manually overridden
+	if err := database.DB.
+		Where("(status NOT IN (?) OR status = '') AND end_date > ? AND end_date <= ?",
+			[]string{"Paused", "Cancelled"}, yesterday, now).
+		Find(&expiredSubs).Error; err != nil {
+		log.Printf("[CRON ERROR] Failed to fetch recently expired subscriptions: %v\n", err)
 		return
 	}
 
@@ -49,13 +58,6 @@ func processExpiredSubscriptions() {
 			continue
 		}
 
-		// Update status to Expired
-		sub.Status = "Expired"
-		if err := database.DB.Save(&sub).Error; err != nil {
-			log.Printf("[CRON ERROR] Failed to update subscription %d to Expired: %v\n", sub.ID, err)
-			continue
-		}
-
 		// Send expiration email
 		subject := "Your Gym Package has Expired"
 		body := fmt.Sprintf("Dear %s,\n\nThis is a notification that your gym package has expired on %s.\n\nPlease renew your plan to continue accessing the gym facilities.\n\nBest Regards,\nGym Management Team", user.Name, sub.EndDate.Format("Jan 02, 2006"))
@@ -63,18 +65,23 @@ func processExpiredSubscriptions() {
 	}
 
 	if len(expiredSubs) > 0 {
-		log.Printf("[CRON] Successfully expired %d subscriptions and sent notifications\n", len(expiredSubs))
+		log.Printf("[CRON] Sent %d expiration notifications\n", len(expiredSubs))
 	}
 }
 
-func processExpiringSoonSubscriptions() {
+// notifyExpiringSoonSubscriptions sends reminder emails for subscriptions
+// expiring within the next 24 hours.
+func notifyExpiringSoonSubscriptions() {
 	var expiringSubs []models.Subscription
 
 	now := time.Now()
 	tomorrow := now.AddDate(0, 0, 1)
 
 	// Fetch active subscriptions expiring strictly within the next 24 hours.
-	if err := database.DB.Where("status = ? AND end_date > ? AND end_date <= ?", "Active", now, tomorrow).Find(&expiringSubs).Error; err != nil {
+	if err := database.DB.
+		Where("(status NOT IN (?) OR status = '') AND start_date <= ? AND end_date > ? AND end_date <= ?",
+			[]string{"Paused", "Cancelled"}, now, now, tomorrow).
+		Find(&expiringSubs).Error; err != nil {
 		log.Printf("[CRON ERROR] Failed to fetch expiring soon subscriptions: %v\n", err)
 		return
 	}

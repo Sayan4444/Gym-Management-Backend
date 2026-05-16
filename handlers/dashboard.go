@@ -40,11 +40,16 @@ func GetSuperAdminDashboardStats(c echo.Context) error {
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	database.DB.Model(&models.Attendance{}).Where("date >= ?", todayStart).Count(&stats.TodaysAttendance)
 
-	database.DB.Model(&models.Subscription{}).Where("status = ?", "Active").Count(&stats.ActiveMemberships)
+	// Active = not manually overridden AND within date range
+	database.DB.Model(&models.Subscription{}).
+		Where("(status NOT IN (?) OR status = '') AND start_date <= ? AND end_date >= ?",
+			[]string{"Paused", "Cancelled"}, now, now).
+		Count(&stats.ActiveMemberships)
 
 	expiringDate := todayStart.AddDate(0, 0, 30)
 	database.DB.Model(&models.Subscription{}).
-		Where("status = ? AND end_date <= ? AND end_date >= ?", "Active", expiringDate, todayStart).
+		Where("(status NOT IN (?) OR status = '') AND start_date <= ? AND end_date >= ? AND end_date <= ?",
+			[]string{"Paused", "Cancelled"}, now, now, expiringDate).
 		Count(&stats.ExpiringSoon)
 
 	var totalRevenue *float64
@@ -126,15 +131,18 @@ func GetAdminDashboardStats(c echo.Context) error {
 		Where("attendances.date >= ? AND users.gym_id = ?", todayStart, gymID).
 		Count(&stats.TodaysAttendance)
 
+	// Active = not manually overridden AND within date range
 	database.DB.Model(&models.Subscription{}).
 		Joins("JOIN users ON users.id = subscriptions.user_id").
-		Where("subscriptions.status = ? AND users.gym_id = ?", "Active", gymID).
+		Where("(subscriptions.status NOT IN (?) OR subscriptions.status = '') AND subscriptions.start_date <= ? AND subscriptions.end_date >= ? AND users.gym_id = ?",
+			[]string{"Paused", "Cancelled"}, now, now, gymID).
 		Count(&stats.ActiveMemberships)
 
 	expiringDate := todayStart.AddDate(0, 0, 30)
 	database.DB.Model(&models.Subscription{}).
 		Joins("JOIN users ON users.id = subscriptions.user_id").
-		Where("subscriptions.status = ? AND subscriptions.end_date <= ? AND subscriptions.end_date >= ? AND users.gym_id = ?", "Active", expiringDate, todayStart, gymID).
+		Where("(subscriptions.status NOT IN (?) OR subscriptions.status = '') AND subscriptions.start_date <= ? AND subscriptions.end_date >= ? AND subscriptions.end_date <= ? AND users.gym_id = ?",
+			[]string{"Paused", "Cancelled"}, now, now, expiringDate, gymID).
 		Count(&stats.ExpiringSoon)
 
 	var totalRevenue *float64

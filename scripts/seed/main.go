@@ -115,7 +115,7 @@ func main() {
 			PlanID:    plans[i%len(plans)].ID,
 			StartDate: time.Now(),
 			EndDate:   time.Now().AddDate(0, plans[i%len(plans)].DurationMonths, 0),
-			Status:    "Active",
+			// Status left empty — CurrentStatus() computes it from dates
 		}
 		db.Create(&sub)
 	}
