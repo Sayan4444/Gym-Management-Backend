@@ -200,7 +200,7 @@ func GetMembershipPlans(c echo.Context) error {
 		}
 
 		gymID := uint(gymIDRaw.(float64))
-		if err := database.DB.Preload("PlanAddons.Addon").Where("gym_id = ?", gymID).Find(&plans).Error; err != nil {
+		if err := database.DB.Preload("PlanAddons.Addon").Where("gym_id = ? AND is_active = ?", gymID, true).Find(&plans).Error; err != nil {
 			log.Printf("Error: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not fetch plans"})
 		}
