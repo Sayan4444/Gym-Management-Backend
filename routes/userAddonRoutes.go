@@ -9,13 +9,13 @@ import (
 
 func UserAddonRoutes(e *echo.Echo) {
 	api := e.Group("/api")
-	
+
 	// Unprotected routes
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
 
 	// GymId is automatically inferred from the auth token used to sign in
-	protected.GET("/user-addons", handlers.GetUserAddons, middleware.RoleScope("SuperAdmin", "GymAdmin","Trainer","Member"))
+	protected.GET("/user-addons", handlers.GetUserAddons, middleware.RoleScope("SuperAdmin", "GymAdmin", "Trainer", "Member"))
 	protected.POST("/user-addons", handlers.AssignUserAddon, middleware.RoleScope("SuperAdmin", "GymAdmin"))
 	protected.PUT("/user-addons/:id", handlers.UpdateUserAddon, middleware.RoleScope("SuperAdmin", "GymAdmin", "Member"))
 	protected.DELETE("/user-addons/:id", handlers.DeleteUserAddon, middleware.RoleScope("SuperAdmin", "GymAdmin"))

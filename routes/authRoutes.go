@@ -13,11 +13,11 @@ func AuthRoutes(e *echo.Echo) {
 	// Public Routes
 	api.POST("/google", handlers.GoogleLogin)
 	api.POST("/logout", handlers.Logout)
-	
+
 	// Protected Routes
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
-	
+
 	// Auth (protected)
 	// GET /users?include=gym,subscription,trainer,workout_plan
 	protected.GET("/me", handlers.GetMe)

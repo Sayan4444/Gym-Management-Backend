@@ -12,18 +12,17 @@ import (
 // trainer can get all the user of their gym under him but cant update any details
 // member can only update their own information
 
-
 func UserRoutes(e *echo.Echo) {
 	api := e.Group("/api")
 
 	// Protected Routes
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware())
-	
+
 	/*
 		GET /users
 		GET /users?gym_id=5
-		GET /users?role=Trainer	
+		GET /users?role=Trainer
 		GET /users?trainer_id=5 - this will get all the members with that id
 		GET /users?is_premium=true - premium should be the name of the plan
 		GET /users?subscription_status= - search by subscription status
@@ -35,5 +34,5 @@ func UserRoutes(e *echo.Echo) {
 	// test these
 	protected.PUT("/users/:id", handlers.UpdateProfile) // allow users to update their own profile
 	protected.DELETE("/users/:id", handlers.DeleteProfile)
- 
+
 }

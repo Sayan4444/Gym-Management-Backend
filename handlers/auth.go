@@ -16,7 +16,7 @@ import (
 
 type GoogleLoginRequest struct {
 	AccessToken string `json:"access_token"`
-	GymId uint `json:"gym_id"`
+	GymId       uint   `json:"gym_id"`
 }
 
 func GoogleLogin(c echo.Context) error {

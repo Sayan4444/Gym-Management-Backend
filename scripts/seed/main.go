@@ -124,9 +124,9 @@ func main() {
 	// Seed 5 Payments
 	for i := 1; i <= 5; i++ {
 		payment := models.Payment{
-			UserID:      users[i%len(users)].ID,
-			Amount:      float64(i * 100),
-			Status:      "Paid",
+			UserID: users[i%len(users)].ID,
+			Amount: float64(i * 100),
+			Status: "Paid",
 		}
 		db.Create(&payment)
 	}

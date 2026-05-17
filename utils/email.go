@@ -20,7 +20,7 @@ func SendEmail(to, subject, body string) error {
 	}
 
 	addr := fmt.Sprintf("%s:%s", host, port)
-	
+
 	var auth smtp.Auth
 	if user != "" {
 		auth = smtp.PlainAuth("", user, pass, host)

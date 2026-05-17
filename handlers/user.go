@@ -3,14 +3,17 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"gym-saas/database"
 	"gym-saas/models"
+	"gym-saas/utils"
 
 	"github.com/labstack/echo/v4"
 	"github.com/lib/pq"
@@ -113,19 +116,19 @@ func GetUsers(c echo.Context) error {
 }
 
 type UpdateProfileRequest struct {
-	Name                  *string         `json:"name"`
-	Phone                 *string         `json:"phone"`
-	DOB                   *string         `json:"dob"`
-	Gender                *string         `json:"gender"`
-	Address               *string         `json:"address"`
-	EmergencyContactName  *string         `json:"emergency_contact_name"`
-	EmergencyContactPhone *string         `json:"emergency_contact_phone"`
-	BloodGroup            *string         `json:"blood_group"`
-	Height                *float64        `json:"height"`
-	Weight                *float64        `json:"weight"`
-	MedicalConditions     *string         `json:"medical_conditions"`
-	Role                  *string         `json:"role"`
-	SocialMedia           *pq.StringArray `json:"social_media"`
+	Name                  *string         `json:"name" form:"name"`
+	Phone                 *string         `json:"phone" form:"phone"`
+	DOB                   *string         `json:"dob" form:"dob"`
+	Gender                *string         `json:"gender" form:"gender"`
+	Address               *string         `json:"address" form:"address"`
+	EmergencyContactName  *string         `json:"emergency_contact_name" form:"emergency_contact_name"`
+	EmergencyContactPhone *string         `json:"emergency_contact_phone" form:"emergency_contact_phone"`
+	BloodGroup            *string         `json:"blood_group" form:"blood_group"`
+	Height                *float64        `json:"height" form:"height"`
+	Weight                *float64        `json:"weight" form:"weight"`
+	MedicalConditions     *string         `json:"medical_conditions" form:"medical_conditions"`
+	Role                  *string         `json:"role" form:"role"`
+	SocialMedia           *pq.StringArray `json:"social_media" form:"social_media"`
 }
 
 func UpdateProfile(c echo.Context) error {
@@ -170,24 +173,90 @@ func UpdateProfile(c echo.Context) error {
 		}
 	}
 
-	bodyBytes, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		log.Printf("Error reading body: %v", err)
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
-	}
-	// Restore the body for Bind
-	c.Request().Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
 	var raw map[string]interface{}
-	if err := json.Unmarshal(bodyBytes, &raw); err != nil {
-		log.Printf("Error unmarshaling to map: %v", err)
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+	var req UpdateProfileRequest
+	isMultipart := strings.HasPrefix(c.Request().Header.Get("Content-Type"), "multipart/form-data")
+
+	if isMultipart {
+		file, err := c.FormFile("image")
+		if err == nil {
+			src, err := file.Open()
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to process image"})
+			}
+			defer src.Close()
+
+			ext := filepath.Ext(file.Filename)
+			if ext == "" {
+				ext = ".png"
+			}
+			filename := fmt.Sprintf("users/%d/profile_pic%s", targetID, ext)
+
+			url, err := utils.UploadToSpaces(src, filename, file.Header.Get("Content-Type"))
+			if err != nil {
+				log.Printf("Error from UploadToSpaces: %v", err)
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to upload image"})
+			}
+			user.PhotoURL = url
+		}
+
+		if err := c.Bind(&req); err != nil {
+			log.Printf("Error: %v", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		}
+
+		// Convert form data to raw map format so existing logic works
+		raw = make(map[string]interface{})
+		form, err := c.MultipartForm()
+		if err == nil && form != nil {
+			for key := range form.Value {
+				raw[key] = true
+			}
+		}
+
+	} else {
+		bodyBytes, err := io.ReadAll(c.Request().Body)
+		if err != nil {
+			log.Printf("Error reading body: %v", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		}
+		// Restore the body for Bind
+		c.Request().Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		if err := json.Unmarshal(bodyBytes, &raw); err != nil {
+			log.Printf("Error unmarshaling to map: %v", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+		}
+
+		if err := c.Bind(&req); err != nil {
+			log.Printf("Error: %v", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		}
 	}
 
-	var req UpdateProfileRequest
-	if err := c.Bind(&req); err != nil {
-		log.Printf("Error: %v", err)
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+	shouldRemove := false
+	if isMultipart {
+		if c.FormValue("remove_image") == "true" {
+			shouldRemove = true
+		}
+	} else {
+		if val, ok := raw["remove_image"]; ok {
+			if b, isBool := val.(bool); isBool && b {
+				shouldRemove = true
+			} else if s, isStr := val.(string); isStr && s == "true" {
+				shouldRemove = true
+			}
+		}
+	}
+
+	if shouldRemove {
+		if user.PhotoURL != "" {
+			err := utils.DeleteFromSpaces(user.PhotoURL)
+			if err != nil {
+				log.Printf("Failed to delete old image from spaces: %v", err)
+			}
+		}
+		user.PhotoURL = ""
 	}
 
 	if req.Role != nil && *req.Role != user.Role {

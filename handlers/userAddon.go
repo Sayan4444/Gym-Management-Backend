@@ -160,9 +160,9 @@ func GetUserAddons(c echo.Context) error {
 // ScheduledAt uses json.RawMessage so we can distinguish "not sent" from
 // "sent as null" (which clears a previously set schedule).
 type UpdateUserAddonRequest struct {
-	AddonID     *uint            `json:"addon_id"`
-	ScheduledAt json.RawMessage  `json:"scheduled_at"` // "null", ISO timestamp, or absent
-	Duration    *int             `json:"duration"`     // override duration in minutes
+	AddonID     *uint           `json:"addon_id"`
+	ScheduledAt json.RawMessage `json:"scheduled_at"` // "null", ISO timestamp, or absent
+	Duration    *int            `json:"duration"`     // override duration in minutes
 }
 
 func UpdateUserAddon(c echo.Context) error {

@@ -89,12 +89,12 @@ func GetGyms(c echo.Context) error {
 func GetGymIDFromDomain(c echo.Context) error {
 	domainName := c.Param("domainName")
 	var gym models.Gym
-	
+
 	if err := database.DB.Select("id").Where("domain = ?", domainName).First(&gym).Error; err != nil {
 		log.Printf("Error fetching gym ID by domain: %v", err)
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Gym not found for this domain"})
 	}
-	
+
 	return c.JSON(http.StatusOK, map[string]uint{"id": gym.ID})
 }
 
