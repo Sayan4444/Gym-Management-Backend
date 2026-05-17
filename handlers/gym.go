@@ -1,13 +1,19 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"gym-saas/database"
 	"gym-saas/models"
+	"gym-saas/utils"
 
 	"github.com/labstack/echo/v4"
 )
@@ -126,11 +132,13 @@ func GetGym(c echo.Context) error {
 }
 
 type GymRequest struct {
-	Name     *string `json:"name"`
-	Slug     *string `json:"slug"`
-	Domain   *string `json:"domain"`
-	Address  *string `json:"address"`
-	Whatsapp *string `json:"whatsapp"`
+	Name     *string `json:"name" form:"name"`
+	Slug     *string `json:"slug" form:"slug"`
+	Domain   *string `json:"domain" form:"domain"`
+	Address  *string `json:"address" form:"address"`
+	Whatsapp *string `json:"whatsapp" form:"whatsapp"`
+	Email    *string `json:"email" form:"email"`
+	Phone    *string `json:"phone" form:"phone"`
 }
 
 func AddGym(c echo.Context) error {
@@ -182,13 +190,139 @@ func UpdateGym(c echo.Context) error {
 	}
 
 	var req GymRequest
-	if err := c.Bind(&req); err != nil {
-		log.Printf("Error: %v", err)
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	var raw map[string]interface{}
+	isMultipart := strings.HasPrefix(c.Request().Header.Get("Content-Type"), "multipart/form-data")
+
+	if isMultipart {
+		file, err := c.FormFile("gym_icon")
+		if err == nil {
+			src, err := file.Open()
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to process image"})
+			}
+			defer src.Close()
+
+			ext := filepath.Ext(file.Filename)
+			if ext == "" {
+				ext = ".png"
+			}
+			filename := fmt.Sprintf("gyms/%d/gym_icon%s", gym.ID, ext)
+
+			url, err := utils.UploadToSpaces(src, filename, file.Header.Get("Content-Type"))
+			if err != nil {
+				log.Printf("Error from UploadToSpaces: %v", err)
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to upload image"})
+			}
+			gym.GymIcon = url
+		}
+
+		if err := c.Bind(&req); err != nil {
+			log.Printf("Error: %v", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		}
+
+		raw = make(map[string]interface{})
+		form, err := c.MultipartForm()
+		if err == nil && form != nil {
+			for key := range form.Value {
+				raw[key] = true
+			}
+		}
+	} else {
+		bodyBytes, err := io.ReadAll(c.Request().Body)
+		if err != nil {
+			log.Printf("Error reading body: %v", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		}
+		c.Request().Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		if err := json.Unmarshal(bodyBytes, &raw); err != nil {
+			log.Printf("Error unmarshaling to map: %v", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+		}
+
+		if err := c.Bind(&req); err != nil {
+			log.Printf("Error: %v", err)
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		}
 	}
 
-	// Use Updates with the request struct to properly handle partial updates via pointers
-	if err := database.DB.Model(&gym).Updates(req).Error; err != nil {
+	shouldRemove := false
+	if isMultipart {
+		if c.FormValue("remove_image") == "true" {
+			shouldRemove = true
+		}
+	} else {
+		if val, ok := raw["remove_image"]; ok {
+			if b, isBool := val.(bool); isBool && b {
+				shouldRemove = true
+			} else if s, isStr := val.(string); isStr && s == "true" {
+				shouldRemove = true
+			}
+		}
+	}
+
+	if shouldRemove {
+		if gym.GymIcon != "" {
+			err := utils.DeleteFromSpaces(gym.GymIcon)
+			if err != nil {
+				log.Printf("Failed to delete old image from spaces: %v", err)
+			}
+		}
+		gym.GymIcon = ""
+	}
+
+	if _, ok := raw["name"]; ok {
+		if req.Name != nil {
+			gym.Name = *req.Name
+		} else {
+			gym.Name = ""
+		}
+	}
+	if _, ok := raw["slug"]; ok {
+		if req.Slug != nil {
+			gym.Slug = *req.Slug
+		} else {
+			gym.Slug = ""
+		}
+	}
+	if _, ok := raw["domain"]; ok {
+		if req.Domain != nil {
+			gym.Domain = *req.Domain
+		} else {
+			gym.Domain = ""
+		}
+	}
+	if _, ok := raw["address"]; ok {
+		if req.Address != nil {
+			gym.Address = *req.Address
+		} else {
+			gym.Address = ""
+		}
+	}
+	if _, ok := raw["whatsapp"]; ok {
+		if req.Whatsapp != nil {
+			gym.Whatsapp = *req.Whatsapp
+		} else {
+			gym.Whatsapp = ""
+		}
+	}
+	if _, ok := raw["email"]; ok {
+		if req.Email != nil {
+			gym.Email = *req.Email
+		} else {
+			gym.Email = ""
+		}
+	}
+	if _, ok := raw["phone"]; ok {
+		if req.Phone != nil {
+			gym.Phone = *req.Phone
+		} else {
+			gym.Phone = ""
+		}
+	}
+
+	if err := database.DB.Save(&gym).Error; err != nil {
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update gym"})
 	}

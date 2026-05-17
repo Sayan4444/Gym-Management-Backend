@@ -58,6 +58,7 @@ type Gym struct {
 	Users           []User           `gorm:"foreignKey:GymID" json:"users"`
 	MembershipPlans []MembershipPlan `gorm:"foreignKey:GymID" json:"membership_plans"`
 	Addons          []Addon          `gorm:"foreignKey:GymID" json:"addons"`
+	GymIcon         string           `json:"gym_icon"`
 }
 
 // deal provided by the gym
