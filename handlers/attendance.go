@@ -269,8 +269,16 @@ func GetAttendance(c echo.Context) error {
 			return c.JSON(http.StatusForbidden, echo.Map{"error": "Gym ID required"})
 		}
 		query = query.Where("users.gym_id = ?", uint(gymIDRaw.(float64)))
-	default: // Trainer, Member
-		// Trainers and Members can only view their own personal attendance records
+	case "Trainer":
+		// Trainers can view their own personal attendance records and their assigned members' records
+		gymIDRaw := c.Get("gym_id")
+		userIDRaw := c.Get("user_id")
+		if userIDRaw == nil || gymIDRaw == nil {
+			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+		}
+		query = query.Where("users.gym_id = ? AND (attendances.user_id = ? OR users.trainer_id = ?)", uint(gymIDRaw.(float64)), uint(userIDRaw.(float64)), uint(userIDRaw.(float64)))
+	default: // Member
+		// Members can only view their own personal attendance records
 		userIDRaw := c.Get("user_id")
 		if userIDRaw == nil {
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
