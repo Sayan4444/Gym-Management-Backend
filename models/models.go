@@ -74,6 +74,7 @@ type MembershipPlan struct {
 	DurationMonths int            `json:"duration_months"`
 	IsActive       bool           `json:"is_active" gorm:"default:true"` // is its a active plan
 	PlanAddons     []PlanAddon    `json:"plan_addons" gorm:"foreignKey:PlanID"`
+	PlanIcon       string         `json:"plan_icon"`
 }
 
 // PlanAddon links an Addon to a MembershipPlan with a total count.

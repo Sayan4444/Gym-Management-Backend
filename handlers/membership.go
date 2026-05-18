@@ -16,6 +16,7 @@ type MembershipPlanRequest struct {
 	DurationMonths *int     `json:"duration_months"`
 	Price          *float64 `json:"price"`
 	IsActive       *bool    `json:"is_active"`
+	PlanIcon       *string  `json:"plan_icon"`
 }
 
 func CreateMembershipPlan(c echo.Context) error {
@@ -43,12 +44,18 @@ func CreateMembershipPlan(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Missing required fields"})
 	}
 
+	planIcon := ""
+	if req.PlanIcon != nil {
+		planIcon = *req.PlanIcon
+	}
+
 	plan := models.MembershipPlan{
 		GymID:          uint(gymIDFromParam),
 		Name:           *req.Name,
 		DurationMonths: *req.DurationMonths,
 		Price:          *req.Price,
 		IsActive:       true,
+		PlanIcon:       planIcon,
 	}
 
 	if err := database.DB.Create(&plan).Error; err != nil {
