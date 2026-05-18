@@ -10,6 +10,7 @@ import (
 
 	"gym-saas/database"
 	"gym-saas/models"
+	"gym-saas/utils"
 
 	"github.com/labstack/echo/v4"
 )
@@ -114,6 +115,11 @@ func recordAttendance(c echo.Context, userID uint, source string, successMessage
 	if err := database.DB.Create(&attendance).Error; err != nil {
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to record attendance"})
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err == nil && user.Email != "" {
+		go utils.SendEmail(user.Email, "Attendance Marked", "Your attendance has been successfully marked for today at "+now.Format("15:04")+". Keep up the great work!")
 	}
 
 	return c.JSON(http.StatusCreated, echo.Map{

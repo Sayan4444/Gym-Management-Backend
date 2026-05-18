@@ -272,6 +272,8 @@ func FailPayment(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Failed to update payment status"})
 	}
 
+	go sendPaymentFailureEmail(payment.UserID, payment.Amount, payment.PaymentFor)
+
 	return c.JSON(http.StatusOK, echo.Map{"message": "Payment marked as failed", "payment": payment})
 }
 
@@ -374,12 +376,19 @@ func HandleWebhook(c echo.Context) error {
 		paymentID := payload.Payload.Payment.Entity.PaymentID
 
 		// Atomic update: Only update to Failed if it hasn't already been marked as Paid
-		database.DB.Model(&models.Payment{}).
+		res := database.DB.Model(&models.Payment{}).
 			Where("razorpay_order_id = ? AND status != ?", orderID, "Paid").
 			Updates(map[string]interface{}{
 				"status":              "Failed",
 				"razorpay_payment_id": paymentID,
 			})
+			
+		if res.RowsAffected > 0 {
+			var fullPayment models.Payment
+			if err := database.DB.Where("razorpay_order_id = ?", orderID).First(&fullPayment).Error; err == nil {
+				go sendPaymentFailureEmail(fullPayment.UserID, fullPayment.Amount, fullPayment.PaymentFor)
+			}
+		}
 	}
 
 	return c.NoContent(http.StatusOK)
@@ -390,6 +399,15 @@ func sendPaymentSuccessEmail(userID uint, amount float64, paymentFor string) {
 	if err := database.DB.First(&user, userID).Error; err == nil {
 		subject := "Payment Successful & Subscription Confirmed"
 		body := fmt.Sprintf("Dear %s,\n\nYour payment of ₹%.2f for %s has been successfully processed.\nYour subscription is now active!\n\nThank you for choosing us.\n\nBest Regards,\nGym Management Team", user.Name, amount, paymentFor)
+		go utils.SendEmail(user.Email, subject, body)
+	}
+}
+
+func sendPaymentFailureEmail(userID uint, amount float64, paymentFor string) {
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err == nil {
+		subject := "Payment Failed"
+		body := fmt.Sprintf("Dear %s,\n\nYour payment of ₹%.2f for %s has failed.\nPlease try again or contact support if you need help.\n\nBest Regards,\nGym Management Team", user.Name, amount, paymentFor)
 		go utils.SendEmail(user.Email, subject, body)
 	}
 }

@@ -23,6 +23,8 @@ func StartSubscriptionCron() {
 		log.Println("[CRON] Running daily subscription notifications")
 		notifyExpiredSubscriptions()
 		notifyExpiringSoonSubscriptions()
+		notifyExpiringSoonAddons()
+		notifyExpiredAddons()
 	})
 
 	if err != nil {
@@ -101,5 +103,70 @@ func notifyExpiringSoonSubscriptions() {
 
 	if len(expiringSubs) > 0 {
 		log.Printf("[CRON] Successfully sent %d expiration reminders\n", len(expiringSubs))
+	}
+}
+
+// notifyExpiredAddons sends email notifications for addons that
+// expired/completed within the last 24 hours.
+func notifyExpiredAddons() {
+	var expiredAddons []models.UserAddon
+
+	now := time.Now()
+	yesterday := now.AddDate(0, 0, -1)
+
+	if err := database.DB.Preload("Addon").
+		Where("scheduled_at IS NOT NULL AND scheduled_at > ? AND scheduled_at <= ?",
+			yesterday, now).
+		Find(&expiredAddons).Error; err != nil {
+		log.Printf("[CRON ERROR] Failed to fetch expired addons: %v\n", err)
+		return
+	}
+
+	for _, ua := range expiredAddons {
+		var user models.User
+		if err := database.DB.First(&user, ua.UserID).Error; err != nil {
+			continue
+		}
+		
+		addonName := "your addon"
+		if ua.Addon != nil {
+			addonName = ua.Addon.Name
+		}
+
+		subject := "Your Gym Addon Session is Complete"
+		body := fmt.Sprintf("Dear %s,\n\nWe hope you enjoyed your %s session.\n\nThank you for choosing us.\n\nBest Regards,\nGym Management Team", user.Name, addonName)
+		go utils.SendEmail(user.Email, subject, body)
+	}
+}
+
+// notifyExpiringSoonAddons sends reminder emails for addons scheduled within the next 24 hours.
+func notifyExpiringSoonAddons() {
+	var expiringAddons []models.UserAddon
+
+	now := time.Now()
+	tomorrow := now.AddDate(0, 0, 1)
+
+	if err := database.DB.Preload("Addon").
+		Where("scheduled_at IS NOT NULL AND scheduled_at > ? AND scheduled_at <= ?",
+			now, tomorrow).
+		Find(&expiringAddons).Error; err != nil {
+		log.Printf("[CRON ERROR] Failed to fetch expiring soon addons: %v\n", err)
+		return
+	}
+
+	for _, ua := range expiringAddons {
+		var user models.User
+		if err := database.DB.First(&user, ua.UserID).Error; err != nil {
+			continue
+		}
+		
+		addonName := "your addon"
+		if ua.Addon != nil {
+			addonName = ua.Addon.Name
+		}
+
+		subject := "Reminder: Your Gym Addon is Scheduled Tomorrow"
+		body := fmt.Sprintf("Dear %s,\n\nThis is a reminder for your upcoming %s session scheduled on %s.\n\nBest Regards,\nGym Management Team", user.Name, addonName, ua.ScheduledAt.Format("Jan 02, 2006 15:04"))
+		go utils.SendEmail(user.Email, subject, body)
 	}
 }

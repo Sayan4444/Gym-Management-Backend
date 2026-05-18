@@ -9,6 +9,7 @@ import (
 
 	"gym-saas/database"
 	"gym-saas/models"
+	"gym-saas/utils"
 
 	"github.com/labstack/echo/v4"
 )
@@ -96,11 +97,13 @@ func AssignSubscription(c echo.Context) error {
 		}
 	}
 
-	sub, _, err := AssignSubscriptionLogic(req.UserID, req.PlanID)
+	sub, plan, err := AssignSubscriptionLogic(req.UserID, req.PlanID)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
+
+	go utils.SendEmail(user.Email, "Subscription Assigned", "You have been assigned the subscription plan: "+plan.Name+". Your membership is active as per the plan duration.")
 
 	return c.JSON(http.StatusCreated, sub)
 }

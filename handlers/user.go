@@ -362,6 +362,8 @@ func UpdateProfile(c echo.Context) error {
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Could not update profile"})
 	}
+	
+	go utils.SendEmail(user.Email, "Profile Updated", "Your profile has been updated successfully. If this wasn't you, please contact support immediately.")
 
 	database.DB.First(&user, uint(targetID))
 	return c.JSON(http.StatusOK, user)

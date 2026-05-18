@@ -9,6 +9,7 @@ import (
 
 	"gym-saas/database"
 	"gym-saas/models"
+	"gym-saas/utils"
 
 	"github.com/labstack/echo/v4"
 )
@@ -76,11 +77,13 @@ func AssignUserAddon(c echo.Context) error {
 		}
 	}
 
-	userAddon, _, err := AssignUserAddonLogic(req.UserID, req.AddonID)
+	userAddon, addon, err := AssignUserAddonLogic(req.UserID, req.AddonID)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
+
+	go utils.SendEmail(user.Email, "Addon Assigned", "You have been assigned the addon: "+addon.Name+". Thank you for enhancing your membership!")
 
 	return c.JSON(http.StatusCreated, userAddon)
 }

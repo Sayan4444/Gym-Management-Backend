@@ -69,6 +69,8 @@ func GoogleLogin(c echo.Context) error {
 			log.Printf("Error: %v", err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create user"})
 		}
+		
+		go utils.SendEmail(user.Email, "Welcome to Gym SaaS!", "We are glad to have you on board. Get started with your fitness journey today.")
 	}
 
 	token, err := utils.GenerateToken(user.ID, user.Role, user.GymID)
