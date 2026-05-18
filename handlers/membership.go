@@ -44,18 +44,13 @@ func CreateMembershipPlan(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Missing required fields"})
 	}
 
-	planIcon := ""
-	if req.PlanIcon != nil {
-		planIcon = *req.PlanIcon
-	}
-
 	plan := models.MembershipPlan{
 		GymID:          uint(gymIDFromParam),
 		Name:           *req.Name,
 		DurationMonths: *req.DurationMonths,
 		Price:          *req.Price,
 		IsActive:       true,
-		PlanIcon:       planIcon,
+		PlanIcon:       req.PlanIcon,
 	}
 
 	if err := database.DB.Create(&plan).Error; err != nil {
