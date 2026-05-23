@@ -57,6 +57,7 @@ jobs:
             # 4. Run the new container with the necessary environment variables
             docker run -d \
               --name $CONTAINER_NAME \
+              --network gym-network \
               -p 8080:8080 \
               --env-file $ENV_FILE_PATH \
               $IMAGE_NAME
